@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from io import StringIO
 from skimage.restoration import denoise_tv_chambolle
+from scipy.integrate import odeint
 
 def preprocess(file, smooth = 15):
     with open("source/"+file, 'r') as file:
@@ -54,26 +55,12 @@ def find_action_potentials(time, voltage, alpha_threshold = 1.5, refractory_peri
 
     return action_potentials
 
-time, voltage = preprocess("1201.txt")
+time, voltage = preprocess("1.txt")
 
 # Резка
 action_potentials = find_action_potentials(time, voltage)
 
 #Все ПД
-plt.figure()
-for i, ap in enumerate(action_potentials):
-    pre_start_index = ap['pre_start']
-    end_index = ap['end']
-    ap_time = time[pre_start_index:end_index+1]
-    ap_voltage = voltage[pre_start_index:end_index+1]
-
-    plt.plot(ap_time, ap_voltage)
-
-    plt.xlabel("Время (мс)")
-    plt.ylabel("Напряжение (мВ)")
-    plt.title(f"{i+1}-й ПД")
-    plt.show()
-
 plt.figure()
 for ap in action_potentials:
     pre_start_index = ap['pre_start']
@@ -87,3 +74,17 @@ plt.xlabel("Время (мс)")
 plt.ylabel("Напряжение (мВ)")
 plt.title("Совмещенные ПД")
 plt.show()
+
+plt.figure()
+for i, ap in enumerate(action_potentials):
+    pre_start_index = ap['pre_start']
+    end_index = ap['end']
+    ap_time = time[pre_start_index:end_index+1]
+    ap_voltage = voltage[pre_start_index:end_index+1]
+
+    plt.plot(ap_time, ap_voltage)
+
+    plt.xlabel("Время (мс)")
+    plt.ylabel("Напряжение (мВ)")
+    plt.title(f"{i+1}-й ПД")
+    plt.show()
