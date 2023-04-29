@@ -61,6 +61,20 @@ action_potentials = find_action_potentials(time, voltage)
 
 #Все ПД
 plt.figure()
+for i, ap in enumerate(action_potentials):
+    pre_start_index = ap['pre_start']
+    end_index = ap['end']
+    ap_time = time[pre_start_index:end_index+1]
+    ap_voltage = voltage[pre_start_index:end_index+1]
+
+    plt.plot(ap_time, ap_voltage)
+
+    plt.xlabel("Время (мс)")
+    plt.ylabel("Напряжение (мВ)")
+    plt.title(f"{i+1}-й ПД")
+    plt.show()
+
+plt.figure()
 for ap in action_potentials:
     pre_start_index = ap['pre_start']
     end_index = ap['end']
@@ -69,7 +83,7 @@ for ap in action_potentials:
 
     plt.plot(ap_time, ap_voltage)
 
-plt.xlabel("Time")
-plt.ylabel("Voltage")
-plt.title("Merged Action Potentials")
+plt.xlabel("Время (мс)")
+plt.ylabel("Напряжение (мВ)")
+plt.title("Совмещенные ПД")
 plt.show()
