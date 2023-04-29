@@ -9,6 +9,7 @@ def preprocess(file, smooth = 15):
         file_content = file.read()
     file_content = file_content.replace(',', '.')
     file_buffer = StringIO(file_content)
+    file.close()
 
     data = np.genfromtxt(file_buffer, delimiter='\t')
 
@@ -20,7 +21,7 @@ def preprocess(file, smooth = 15):
     voltage = denoise_tv_chambolle((data[:, 1] * 1000), smooth)
     return time, voltage
 
-def find_action_potentials(time, voltage, alpha_threshold = 1.5, refractory_period = 100):
+def find_action_potentials(time, voltage, alpha_threshold = 25, refractory_period = 100, start_offset = 80):
     # Выделенные ПД будут типа dictionary, которые хранят следующие штуки:
     # "pre_start" - нулевое или время конца предыдущего ПД
     # "start" - непосредственно начало фазы 0
@@ -48,14 +49,14 @@ def find_action_potentials(time, voltage, alpha_threshold = 1.5, refractory_peri
 
         action_potentials.append({
             'pre_start': pre_start_index,
-            'start': start_index,
+            'start': start_index - start_offset,
             'peak': peak_index,
             'end': end_index
         })
 
     return action_potentials
 
-time, voltage = preprocess("1.txt")
+time, voltage = preprocess("combined.txt")
 
 # Резка
 action_potentials = find_action_potentials(time, voltage)
@@ -83,6 +84,8 @@ for i, ap in enumerate(action_potentials):
     ap_voltage = voltage[pre_start_index:end_index+1]
 
     plt.plot(ap_time, ap_voltage)
+
+    plt.scatter(time[ap['start']], voltage[ap['start']], marker='o', color='red', label='Начало ПД')
 
     plt.xlabel("Время (мс)")
     plt.ylabel("Напряжение (мВ)")
