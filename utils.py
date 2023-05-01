@@ -1,17 +1,34 @@
+"""
+Библиотека для анализа потенциал действий кардиомиоцитов
+
+Функции:
+----------
+preprocess(file: str, smooth: int = 15) -> Tuple[np.ndarray, np.ndarray]:
+    Предобработка входных данных, сглаживание на основе полной вариации
+
+find_action_potentials(time: np.ndarray, voltage: np.ndarray, alpha_threshold: int = 25, refractory_period: int = 100, start_offset: int = 80) -> List[Dict[str, int]]:
+    Определение потенциалов действий, благодаря параметрам:
+    1)  alpha - значимая скорость изменения напряжения
+    2)  refractory_perid - период, в течение которого алгоритм не будет считать величину данного напряжение (значимого или незначимого)
+        за следующий потенциал действия
+    3)  start_offset - смещение по времени начала потенциала действия
+
+find_voltage_speed(ap: Dict[str, int], time: np.ndarray, voltage: np.ndarray) -> Tuple[float, float]:
+    Расчет средних скоростей в фазах 4 и 0
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 from io import StringIO
 from skimage.restoration import denoise_tv_chambolle
-from scipy.integrate import odeint
 
 def preprocess(file, smooth = 15):
-    with open("source/"+file, 'r') as file:
+    with open("source/" + file, 'r') as file:
         file_content = file.read()
     file_content = file_content.replace(',', '.')
-    file_buffer = StringIO(file_content)
-    file.close()
 
-    data = np.genfromtxt(file_buffer, delimiter='\t')
+    with StringIO(file_content) as file_buffer:
+        data = np.genfromtxt(file_buffer, delimiter='\t')
 
     # Применим Total Variation Filtering (делаем функцию более гладкой)
     # Меняем smooth зависимости от требований
@@ -56,38 +73,18 @@ def find_action_potentials(time, voltage, alpha_threshold = 25, refractory_perio
 
     return action_potentials
 
-time, voltage = preprocess("combined.txt")
+def find_voltage_speed(ap, time, voltage):
+    # Надеюсь тут понятно без объяснений...
+    prestart_index = ap['pre_start']
+    start_index = ap['start']
+    peak_index = ap['peak']
+    
+    phase_4_time = time[prestart_index:start_index]
+    phase_4_voltage = voltage[prestart_index:start_index]
+    phase_4_speed = np.diff(phase_4_voltage) / np.diff(phase_4_time)
 
-# Резка
-action_potentials = find_action_potentials(time, voltage)
+    phase_0_time = time[start_index:peak_index]
+    phase_0_voltage = voltage[start_index:peak_index]
+    phase_0_speed = np.diff(phase_0_voltage) / np.diff(phase_0_time)
 
-#Все ПД
-plt.figure()
-for ap in action_potentials:
-    pre_start_index = ap['pre_start']
-    end_index = ap['end']
-    ap_time = time[pre_start_index:end_index+1]
-    ap_voltage = voltage[pre_start_index:end_index+1]
-
-    plt.plot(ap_time, ap_voltage)
-
-plt.xlabel("Время (мс)")
-plt.ylabel("Напряжение (мВ)")
-plt.title("Совмещенные ПД")
-plt.show()
-
-plt.figure()
-for i, ap in enumerate(action_potentials):
-    pre_start_index = ap['pre_start']
-    end_index = ap['end']
-    ap_time = time[pre_start_index:end_index+1]
-    ap_voltage = voltage[pre_start_index:end_index+1]
-
-    plt.plot(ap_time, ap_voltage)
-
-    plt.scatter(time[ap['start']], voltage[ap['start']], marker='o', color='red', label='Начало ПД')
-
-    plt.xlabel("Время (мс)")
-    plt.ylabel("Напряжение (мВ)")
-    plt.title(f"{i+1}-й ПД")
-    plt.show()
+    return np.mean(phase_4_speed), np.mean(phase_0_speed)
