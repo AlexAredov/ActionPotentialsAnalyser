@@ -45,6 +45,7 @@ def circle(file):
         print(rad)
 
         plt.gca().add_patch(plt.Circle((x_r, y_r), rad, color='lightblue', alpha=0.5))
+        return rad, x_r, y_r
 
     #open file
     #file = open('./11.txt')
@@ -100,12 +101,13 @@ def circle(file):
     plt.scatter(dff[0][ma-o], dff[1][ma-o], color='green', s=40, marker='o')
 
     #finding the radius
-    radius(dff[0][ma], dff[1][ma], dff[0][ma+o], dff[1][ma+o], dff[0][ma-o], dff[1][ma-o])
+    rad, x_r, y_r = radius(dff[0][ma], dff[1][ma], dff[0][ma+o], dff[1][ma+o], dff[0][ma-o], dff[1][ma-o])
 
     #drauing the rigth and flat graphes
     plt.plot(datafr.x, datafr.y)
     plt.plot(dff[0], dff[1])
 
     plt.show()
+    return rad, x_r, y_r
 
-circle(open('./11.txt'))
+radius, x, y = circle(open('./11.txt'))
