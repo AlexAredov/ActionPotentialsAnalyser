@@ -1,11 +1,11 @@
-import numpy as np
-import matplotlib.pyplot as plt
-from utils import preprocess, find_action_potentials, find_voltage_speed
+from utils import *
 
-time, voltage = preprocess("1.txt")
+# Входные данные + резка пд
+file = "1.txt"
+time, voltage = preprocess(file)
 action_potentials = find_action_potentials(time, voltage)
 
-#Все ПД
+# Графики
 plt.figure()
 plt.plot(time, voltage)
 plt.xlabel("Время (мс)")
@@ -13,23 +13,10 @@ plt.ylabel("Напряжение (мВ)")
 plt.title("Исходный сигнал")
 plt.show()
 
-plt.figure()
-for i, ap in enumerate(action_potentials):
-    pre_start_index = ap['pre_start']
-    end_index = ap['end']
-    ap_time = time[pre_start_index:end_index+1]
-    ap_voltage = voltage[pre_start_index:end_index+1]
+# for ap in action_potentials:
+#     plot_ap(ap, time, voltage)
+plot_phase_4_speed(action_potentials, time, voltage)
+plot_phase_0_speed(action_potentials, time, voltage)
 
-    plt.plot(ap_time, ap_voltage)
-    plt.scatter(time[ap['start']], voltage[ap['start']], marker='o', color='red', label='Начало ПД')
-
-    plt.xlabel("Время (мс)")
-    plt.ylabel("Напряжение (мВ)")
-    plt.title(f"{i+1}-й ПД")
-
-    plt.show()
-
-# Скорости
-phase_4_speed, phase_0_speed = find_voltage_speed(action_potentials[0], time, voltage)
-print(f"Скорость в фазе 4 = {phase_4_speed:.2f}")
-print(f"Скорость в фазе 0 = {phase_0_speed:.2f}")
+# Табличка
+save_aps_to_xlsx(f"tables/{file.replace('.txt', '')}.xlsx", action_potentials, time, voltage)

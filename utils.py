@@ -1,5 +1,5 @@
 """
-Библиотека для анализа потенциал действий кардиомиоцитов
+Библиотека для анализа потенциалов действий кардиомиоцитов
 
 Функции:
 ----------
@@ -15,12 +15,29 @@ find_action_potentials(time: np.ndarray, voltage: np.ndarray, alpha_threshold: i
 
 find_voltage_speed(ap: Dict[str, int], time: np.ndarray, voltage: np.ndarray) -> Tuple[float, float]:
     Расчет средних скоростей в фазах 4 и 0
+
+plot_ap(ap: Dict[str, int], time: np.ndarray, voltage: np.ndarray):
+    Вывод графика потенциала действия
+
+plot_phase_4_speed(aps: List[Dict[str, int]], time: np.ndarray, voltage: np.ndarray):
+    Вывод графика скорости изменения напряжения фазы 4 для каждого потенциала действия
+
+plot_phase_0_speed(aps: List[Dict[str, int]], time: np.ndarray, voltage: np.ndarray):
+    Вывод графика скорости изменения напряжения фазы 0 для каждого потенциала действия
+
+save_aps_to_xlsx(destination: str, aps: List[Dict[str, int]], time: np.ndarray, voltage: np.ndarray):
+    Сохранение данных потенциалов действий в Excel таблицу
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
+import openpyxl
+from scipy.ndimage import gaussian_filter
 from io import StringIO
 from skimage.restoration import denoise_tv_chambolle
+from math import sqrt
+from openpyxl.utils import get_column_letter
 
 def preprocess(file, smooth = 15):
     with open("source/" + file, 'r') as file:
@@ -30,16 +47,12 @@ def preprocess(file, smooth = 15):
     with StringIO(file_content) as file_buffer:
         data = np.genfromtxt(file_buffer, delimiter='\t')
 
-    # Применим Total Variation Filtering (делаем функцию более гладкой)
-    # Меняем smooth зависимости от требований
-    # Нужна более гладкая функци ? - smooth ставим больше
-    # Нужна менее сглаженная ? - smooth ставим поменьше
     time = data[:, 0] * 1000
     voltage = denoise_tv_chambolle((data[:, 1] * 1000), smooth)
+    voltage = gaussian_filter(voltage, 1)
     return time, voltage
 
 def find_action_potentials(time, voltage, alpha_threshold = 25, refractory_period = 100, start_offset = 80):
-    # Выделенные ПД будут типа dictionary, которые хранят следующие штуки:
     # "pre_start" - нулевое или время конца предыдущего ПД
     # "start" - непосредственно начало фазы 0
     # "peak" - максимум ПД
@@ -74,7 +87,6 @@ def find_action_potentials(time, voltage, alpha_threshold = 25, refractory_perio
     return action_potentials
 
 def find_voltage_speed(ap, time, voltage):
-    # Надеюсь тут понятно без объяснений...
     prestart_index = ap['pre_start']
     start_index = ap['start']
     peak_index = ap['peak']
@@ -88,3 +100,74 @@ def find_voltage_speed(ap, time, voltage):
     phase_0_speed = np.diff(phase_0_voltage) / np.diff(phase_0_time)
 
     return np.mean(phase_4_speed), np.mean(phase_0_speed)
+
+def plot_ap(ap, time, voltage):
+    current_ap_time = time[ap['pre_start']:ap['end']]
+    current_ap_voltage = voltage[ap['pre_start']:ap['end']]
+
+    plt.figure()
+    plt.scatter(time[ap['start']], voltage[ap['start']], marker='o', color='red')
+    plt.plot(current_ap_time, current_ap_voltage)
+    plt.xlabel("Время (мс)")
+    plt.ylabel("Напряжение (мВ)")
+    plt.show("ПД")
+
+def plot_phase_4_speed(aps, time, voltage):
+    plt.figure()
+
+    phase_4_times = []
+    phase_4_speeds = []
+
+    for ap in aps:
+        phase_4_times.append(time[ap['pre_start']])
+        phase_4_speed, _ = find_voltage_speed(ap, time, voltage)
+        phase_4_speeds.append(phase_4_speed)
+
+    plt.plot(phase_4_times, phase_4_speeds)
+
+    plt.xlabel("Время (мс)")
+    plt.ylabel("Скорость изменения напряжения (мВ/мс)")
+    plt.title("Фаза 4")
+    plt.show()
+
+def plot_phase_0_speed(aps, time, voltage):
+    plt.figure()
+
+    phase_0_times = []
+    phase_0_speeds = []
+
+    for ap in aps:
+        phase_0_times.append(time[ap['start']])
+        _, phase_0_speed = find_voltage_speed(ap, time, voltage)
+        phase_0_speeds.append(phase_0_speed)
+
+    plt.plot(phase_0_times, phase_0_speeds)
+
+    plt.xlabel("Время (мс)")
+    plt.ylabel("Скорость изменения напряжения (мВ/мс)")
+    plt.title("Фаза 0")
+    plt.show()
+
+def save_aps_to_xlsx(destination, aps, time, voltage):
+    data = []
+
+    for number, ap in enumerate(aps):
+        phase_4_speed, phase_0_speed = find_voltage_speed(ap, time, voltage)
+        
+        current_ap_time = time[ap['pre_start']:ap['end']]
+        current_ap_voltage = voltage[ap['pre_start']:ap['end']]
+        
+        # radius, _, _ = circle(current_ap_time, current_ap_voltage)
+        
+        row = {
+            "Номер ПД": number + 1,
+            "Начало": f"{current_ap_time[0]:.2f}",
+            "Конец": f"{current_ap_time[-1]:.2f}",
+            "Радиус": "radius",
+            "dV/dt4": phase_4_speed,
+            "dV/dt0": phase_0_speed
+        }
+        data.append(row)
+
+    df = pd.DataFrame(data)
+    df.to_excel(destination, index=False, engine='openpyxl')
