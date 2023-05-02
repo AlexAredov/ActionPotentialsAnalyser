@@ -37,10 +37,11 @@ from scipy.ndimage import gaussian_filter
 from io import StringIO
 from skimage.restoration import denoise_tv_chambolle
 from math import sqrt
+from itertools import islice
 from openpyxl.utils import get_column_letter
 
 def preprocess(file, smooth = 15):
-    with open("source/" + file, 'r') as file:
+    with open(file, 'r') as file:
         file_content = file.read()
     file_content = file_content.replace(',', '.')
 
@@ -52,7 +53,7 @@ def preprocess(file, smooth = 15):
     voltage = gaussian_filter(voltage, 1)
     return time, voltage
 
-def find_action_potentials(time, voltage, alpha_threshold = 25, refractory_period = 100, start_offset = 80):
+def find_action_potentials(time, voltage, alpha_threshold = 25, refractory_period = 10, start_offset = 80):
     # "pre_start" - нулевое или время конца предыдущего ПД
     # "start" - непосредственно начало фазы 0
     # "peak" - максимум ПД
@@ -101,7 +102,76 @@ def find_voltage_speed(ap, time, voltage):
 
     return np.mean(phase_4_speed), np.mean(phase_0_speed)
 
-def plot_ap(ap, time, voltage):
+def circle(time, voltage):
+    #plt.style.use('seaborn-whitegrid')
+
+    def nearest_value(items_x, items_y, value_x, value_y):
+        l = []
+        for i in range(len(items_x)):
+            l.append(sqrt((value_x - items_x[i])**2 + (value_y - items_y[i])**2))
+        return(l.index(min(l)))
+
+    def flat(x, y, n):
+        x1 = []
+        y1 = []
+        for i in range(0,len(x),n):
+            x1.append(x[i])
+            y1.append(y[i])
+        dat = [x1, y1]
+        return dat
+
+    def radius(x_c, y_c, x_1, y_1, x_2, y_2):
+        cent1_x = (x_c + x_1)/2
+        cent1_y = (y_c + y_1)/2
+        cent2_x = (x_c + x_2)/2
+        cent2_y = (y_c + y_2)/2
+
+        k1 = (cent1_x - x_c)/(cent1_y - y_c)
+        b1 = cent1_y + k1*cent1_x
+
+        k2 = (cent2_x - x_c)/(cent2_y - y_c)
+        b2 = cent2_y + k2*cent2_x
+
+        x_r = (b2-b1)/(k2-k1)
+        y_r = -k1*x_r + b1
+
+        rad = sqrt((x_r - x_c)**2 + (y_r - y_c)**2)
+
+        #plt.gca().add_patch(plt.Circle((x_r, y_r), rad, color='lightblue', alpha=0.5))
+        return rad, x_r, y_r
+
+    x_t = list(time)
+    y_t = list(voltage)
+
+    x = []
+    y = []
+    for i in range(len(x_t)):
+        if (x_t[i] < x_t[list(y_t).index(max(y_t))]) and (y_t[i] < min(y_t)/2):
+            x.append(x_t[i])
+            y.append(y_t[i])
+
+    l = 32
+    dff = flat(x, y, 32)
+    ma = nearest_value(dff[0], dff[1], x[list(y).index(max(y))], min(y))
+
+    o = 10
+
+    while ma + o >= len(dff[0]):
+        l = l//2
+        dff = flat(x, y, l)
+        ma = nearest_value(dff[0], dff[1], x[list(y).index(max(y))], min(y))
+    while dff[1][ma+o] - dff[1][ma] >= 3:
+        o -= 1
+        ma = nearest_value(dff[0], dff[1], x[list(y).index(max(y))], min(y))
+
+    #set the size of graph
+    #f = plt.figure()
+    #f.set_figwidth(5*2*max(dff[0])/abs(min(dff[1])))
+    #f.set_figheight(5)
+    rad, x_r, y_r = radius(dff[0][ma], dff[1][ma], dff[0][ma+o], dff[1][ma+o], dff[0][ma-o], dff[1][ma-o])
+    return rad, x_r, y_r
+
+def plot_ap(ap, time, voltage, number = ''):
     current_ap_time = time[ap['pre_start']:ap['end']]
     current_ap_voltage = voltage[ap['pre_start']:ap['end']]
 
@@ -110,18 +180,43 @@ def plot_ap(ap, time, voltage):
     plt.plot(current_ap_time, current_ap_voltage)
     plt.xlabel("Время (мс)")
     plt.ylabel("Напряжение (мВ)")
-    plt.show("ПД")
+    plt.title(f"{number} ПД")
+    plt.show()
 
-def plot_phase_4_speed(aps, time, voltage):
+def plot_phase_4_speed(ap, time, voltage):
+    plt.figure()
+
+    phase_4_time = time[ap['pre_start']:ap['start']]
+    phase_4_voltage = voltage[ap['pre_start']:ap['start']]
+    phase_4_speed = np.diff(phase_4_voltage) / np.diff(phase_4_time)
+
+    plt.plot(phase_4_time[:-1], phase_4_speed)
+    plt.show()
+
+def plot_phase_0_speed(ap, time, voltage):
+    plt.figure()
+
+    phase_0_time = time[ap['start']:ap['peak']]
+    phase_0_voltage = voltage[ap['start']:ap['peak']]
+    phase_0_speed = np.diff(phase_0_voltage) / np.diff(phase_0_time)
+
+    plt.plot(phase_0_time[:-1], phase_0_speed)
+    plt.show()
+
+def plot_phase_4_speeds(aps, time, voltage, min_time_diff = 0):
     plt.figure()
 
     phase_4_times = []
     phase_4_speeds = []
 
+    min_time_diff = min_time_diff * 60 * 1000
+
     for ap in aps:
-        phase_4_times.append(time[ap['pre_start']])
-        phase_4_speed, _ = find_voltage_speed(ap, time, voltage)
-        phase_4_speeds.append(phase_4_speed)
+        phase_4_time = time[ap['pre_start']]
+        if not phase_4_times or phase_4_time - phase_4_times[-1] >= min_time_diff:
+            phase_4_times.append(phase_4_time)
+            phase_4_speed, _ = find_voltage_speed(ap, time, voltage)
+            phase_4_speeds.append(phase_4_speed)
 
     plt.plot(phase_4_times, phase_4_speeds)
 
@@ -130,22 +225,48 @@ def plot_phase_4_speed(aps, time, voltage):
     plt.title("Фаза 4")
     plt.show()
 
-def plot_phase_0_speed(aps, time, voltage):
+def plot_phase_0_speeds(aps, time, voltage, min_time_diff = 0):
     plt.figure()
 
     phase_0_times = []
     phase_0_speeds = []
 
+    min_time_diff = min_time_diff * 60 * 1000
+
     for ap in aps:
-        phase_0_times.append(time[ap['start']])
-        _, phase_0_speed = find_voltage_speed(ap, time, voltage)
-        phase_0_speeds.append(phase_0_speed)
+        phase_0_time = time[ap['start']]
+        if not phase_0_times or phase_0_time - phase_0_times[-1] >= min_time_diff:
+            phase_0_times.append(phase_0_time)
+            _, phase_0_speed = find_voltage_speed(ap, time, voltage)
+            phase_0_speeds.append(phase_0_speed)
 
     plt.plot(phase_0_times, phase_0_speeds)
 
     plt.xlabel("Время (мс)")
     plt.ylabel("Скорость изменения напряжения (мВ/мс)")
     plt.title("Фаза 0")
+    plt.show()
+
+def plot_radiuses(aps, time, voltage, min_time_diff = 0):
+    plt.figure()
+
+    times = []
+    radiuses = []
+
+    min_time_diff = min_time_diff * 60 * 1000
+
+    for ap in aps:
+        current_ap_time = time[ap['pre_start']]
+        current_ap_voltage = voltage[ap['pre_start']:ap['end']]
+        if not times or current_ap_time - times[-1] >= min_time_diff:
+            times.append(current_ap_time)
+            current_ap_radius, _, _ = circle(time[ap['pre_start']:ap['end']], current_ap_voltage)
+            radiuses.append(current_ap_radius)
+
+    plt.plot(times, radiuses)
+
+    plt.xlabel("Время (мс)")
+    plt.ylabel("Радиус кривизны ПД (у.е.)")
     plt.show()
 
 def save_aps_to_xlsx(destination, aps, time, voltage):
@@ -157,13 +278,13 @@ def save_aps_to_xlsx(destination, aps, time, voltage):
         current_ap_time = time[ap['pre_start']:ap['end']]
         current_ap_voltage = voltage[ap['pre_start']:ap['end']]
         
-        # radius, _, _ = circle(current_ap_time, current_ap_voltage)
+        radius, _, _ = circle(current_ap_time, current_ap_voltage)
         
         row = {
             "Номер ПД": number + 1,
             "Начало": f"{current_ap_time[0]:.2f}",
             "Конец": f"{current_ap_time[-1]:.2f}",
-            "Радиус": "radius",
+            "Радиус": round(radius, 2),
             "dV/dt4": phase_4_speed,
             "dV/dt0": phase_0_speed
         }
