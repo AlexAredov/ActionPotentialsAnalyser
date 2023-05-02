@@ -1,4 +1,34 @@
-#importing libs
+"""
+Библиотека для анализа потенциалов действий кардиомиоцитов
+
+Как это работает?
+На входе мы получаем файл с точками (в зависимости: время по оси X и значение по
+оси Y). Для начала мы берем нужную нам часть графика. Мы удаляем все значения
+по оси X до максимального значения Y. И удаляем ненужную верхнюю половину
+значений Y.
+Далее нужно сгладить график, для этого была написана функция flat.
+Функция принимает 3 значение: массив значений X, массив значений Y и значение n.
+Значение n - это степень сглаживания. Алгоритм оставляет все элементы в массивах
+через n значений.
+Берем сначала очень большую степень сглаживания (например 32), дальше мы
+будем постепенно ее уменьшать.
+Теперь нам нужно найти точку в которой случается перегиб. Для этого возьмем точку
+у которой значение X равно максимальным из сглаженного графика и минимальное
+значение Y. Далее мы можем найти ближайшее значение от точки к графику. Для
+этого написана функция nearest_value.
+Функция проходит по всем значениям функции и находит минимальное расстояние
+от точки которую мы нашли до графика.
+Чтобы найти радиус мы должны построить окружность. Окружность мы можем
+построить только по трем точкам. Одна точка у нас уже есть. Теперь нам нужно
+найти еще 2. Мы можем взять точку на 10 впереди этой точки и на 10 значений
+назад. Но если мы видим что мы выходим пределы массива взяв на 10 точек
+больше, тогда мы уменьшаем сглаживание в 2 раза. Чтобы избежать того, что круг
+будет выходить за пределы графика проверяем, чтобы следующая точка была не
+выше предыдущей на 0.003. Если это так, то уменьшаем разницу и берем не на 10
+значений вперед, а на 10 - 1 значений. И так пока не найдем оптимальное
+сглаживание и оптимальное количество точек.
+Итак, мы получили 3 точки, теперь по ним мы можем найти окружность.
+"""
 import matplotlib.pyplot as plt
 import pandas as pd
 from math import sqrt
@@ -21,17 +51,14 @@ def preprocess(file, smooth = 15):
     return time, voltage
 
 def circle(time, voltage):
-    #grid
     plt.style.use('seaborn-whitegrid')
 
-    #the function to found the nearest value for this
     def nearest_value(items_x, items_y, value_x, value_y):
         l = []
         for i in range(len(items_x)):
             l.append(sqrt((value_x - items_x[i])**2 + (value_y - items_y[i])**2))
         return(l.index(min(l)))
 
-    #function to do graph smoother
     def flat(x, y, n):
         x1 = []
         y1 = []
@@ -41,7 +68,6 @@ def circle(time, voltage):
         dat = [x1, y1]
         return dat
 
-    #function to find center dot and radius of the circle from 3 dots
     def radius(x_c, y_c, x_1, y_1, x_2, y_2):
         cent1_x = (x_c + x_1)/2
         cent1_y = (y_c + y_1)/2
@@ -56,10 +82,8 @@ def circle(time, voltage):
 
         x_r = (b2-b1)/(k2-k1)
         y_r = -k1*x_r + b1
-        #print(x_r, y_r)
 
         rad = sqrt((x_r - x_c)**2 + (y_r - y_c)**2)
-        #print(rad)
 
         plt.gca().add_patch(plt.Circle((x_r, y_r), rad, color='lightblue', alpha=0.5))
         return rad, x_r, y_r
@@ -67,25 +91,19 @@ def circle(time, voltage):
     x_t = list(time)
     y_t = list(voltage)
 
-    #writing just the right values
     x = []
     y = []
     for i in range(len(x_t)):
         if (x_t[i] < x_t[list(y_t).index(max(y_t))]) and (y_t[i] < min(y_t)/2):
             x.append(x_t[i])
             y.append(y_t[i])
-    dat = {'x': x_t, 'y': y_t}
-    datafr = pd.DataFrame(data=dat)
 
-    #first flatting (the big one)
     l = 32
     dff = flat(x, y, 32)
     ma = nearest_value(dff[0], dff[1], x[list(y).index(max(y))], min(y))
 
-    #number of dots to the left and right of the center
     o = 10
 
-    #reduce flatting
     while ma + o >= len(dff[0]):
         l = l//2
         dff = flat(x, y, l)
@@ -98,23 +116,5 @@ def circle(time, voltage):
     f = plt.figure()
     f.set_figwidth(5*2*max(dff[0])/abs(min(dff[1])))
     f.set_figheight(5)
-
-    #the number of flatting
-    #print(l)
-
-    #the dot (nearest to center)
-    #plt.scatter(x[list(y).index(max(y))], min(y), color='orange', s=40, marker='o')
-
-    #other dots
-    #plt.scatter(dff[0][ma], dff[1][ma], color='green', s=40, marker='o')
-    #plt.scatter(dff[0][ma+o], dff[1][ma+o], color='green', s=40, marker='o')
-    #plt.scatter(dff[0][ma-o], dff[1][ma-o], color='green', s=40, marker='o')
-
-    #finding the radius
     rad, x_r, y_r = radius(dff[0][ma], dff[1][ma], dff[0][ma+o], dff[1][ma+o], dff[0][ma-o], dff[1][ma-o])
-
-    #drauing the rigth and flat graphes
-    #plt.plot(datafr.x, datafr.y)
-
-    #plt.show()
     return rad, x_r, y_r
