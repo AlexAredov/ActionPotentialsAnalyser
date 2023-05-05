@@ -41,5 +41,5 @@ def combine_files(input_folder, output_file, quantity=None):
     np.savetxt(output_file, combined_data, delimiter='\t', fmt='%.6f')
 
 input_folder = 'source'
-output_file = 'hundred.txt'
-combine_files(input_folder, output_file, quantity=100)
+output_file = 'ten.txt'
+combine_files(input_folder, output_file, quantity=10)
