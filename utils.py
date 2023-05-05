@@ -1,57 +1,5 @@
 """
 Библиотека для анализа потенциалов действий кардиомиоцитов
-
-Параметры, которые меняет пользователь (если ничего не введено, используются значения по-умолчанию):
-    1) preprocess:              smooth
-    2) find_action_potentials:  alpha_threshold, refractory period, start_offset
-    3) plot_phase_4_speeds:     min_time_diff
-    4) plot_phase_0_speeds:     min_time_diff
-    5) plot_radiuses:           min_time_diff
-
-Пояснение:
-    1)  smooth - сглаживание изначальных данных
-    2)  alpha - значимая скорость изменения напряжения
-    3)  refractory_perid - период, в течение которого алгоритм не будет считать 
-        величину данного напряжение за следующий потенциал действия
-    4)  start_offset - смещение по времени начала потенциала действия
-    5)  min_time_diff - время (указывать в минутах) между точками, чтобы график не был таки шумным
-
-Функции:
-----------
-preprocess(file: str, smooth: int = 15) -> Tuple[np.ndarray, np.ndarray]:
-    Предобработка входных данных, сглаживание на основе полной вариации и фильтра гаусса
-
-find_action_potentials(time: np.ndarray, voltage: np.ndarray, alpha_threshold: int = 25, refractory_period: int = 100, start_offset: int = 80) -> List[Dict[str, int]]:
-    Определение потенциалов действий
-
-find_voltage_speed(ap: Dict[str, int], time: np.ndarray, voltage: np.ndarray) -> Tuple[float, float]:
-    Расчет средних скоростей в фазах 4 и 0
-
-circle(time: np.ndarray, voltage: np.ndarray) -> Tuple[float, float, float]:
-    Расчет радиуса кривизны потенциала действия и координат центр окружности
-
-plot_ap(ap: Dict[str, int], time: np.ndarray, voltage: np.ndarray):
-    Вывод графика потенциала действия
-
-plot_phase_4_speed(ap: Dict[str, int], time: np.ndarray, voltage: np.ndarray):
-    Вывод графика скорости изменения напряжения фазы 4 для определенного потенциала действия
-
-plot_phase_0_speed(ap: Dict[str, int], time: np.ndarray, voltage: np.ndarray):
-    Вывод графика скорости изменения напряжения фазы 0 для определенного потенциала действия
-
-plot_phase_4_speeds(aps: List[Dict[str, int]], time: np.ndarray, voltage: np.ndarray, min_time_diff: float = 0):
-    Вывод графика скорости изменения напряжения фазы 4 для всех потенциалов действий
-    Параметр "min_time_diff" - задает временной промежуток между значениями на графике
-
-plot_phase_0_speeds(aps: List[Dict[str, int]], time: np.ndarray, voltage: np.ndarray, min_time_diff: float = 0):
-    Вывод графика скорости изменения напряжения фазы 0 для всех потенциалов действий
-    Параметр "min_time_diff" - задает временной промежуток между значениями на графике
-
-def plot_radiuses(aps: List[Dict[str, int]], time: np.ndarray, voltage: np.ndarray, min_time_diff: float = 0):
-    Вывод графика радиусов для всех потенциалов действий
-
-save_aps_to_xlsx(destination: str, aps: List[Dict[str, int]], time: np.ndarray, voltage: np.ndarray):
-    Сохранение данных потенциалов действий в Excel таблицу
 """
 
 import numpy as np
@@ -67,6 +15,15 @@ from itertools import islice
 from openpyxl.utils import get_column_letter
 
 def open_txt(file):
+    """
+    Открывает текстовый файл и возвращает массивы времени и напряжения, разделенных табуляцией.
+
+    Аргументы:
+        file (str): Путь к текстовому файлу.
+
+    Возвращает:
+        tuple: Кортеж из двух массивов numpy (первый столбец данных, второй столбец данных).
+    """
     with open(file, 'r') as file:
         file_content = file.read()
     file_content = file_content.replace(',', '.')
@@ -77,6 +34,18 @@ def open_txt(file):
     return data[:,0], data[:,1]
 
 def save_aps_to_txt(destination, aps, time, voltage):
+    """
+    Сохраняет ПД в текстовый файл в определенную папку.
+    
+    Аргументы:
+        destination (str): Путь к папке для сохранения.
+        aps (list): Список словарей, содержащих ключи 'pre_start' и 'end'.
+        time (np.ndarray): 1D массив numpy содержащий значения времени.
+        voltage (np.ndarray): 1D массив numpy содержащий значения напряжения.
+        
+    Возвращает:
+        list: Лист временных интервалов для начала и конца каждого ПД
+    """
     if not os.path.exists(destination):
         os.makedirs(destination)
 
@@ -95,6 +64,18 @@ def save_aps_to_txt(destination, aps, time, voltage):
     return time_intervals
 
 def save_aps_to_xlsx(destination, aps, time, voltage):
+    """
+    Сохраняет информацию о ПД в .xlsx таблицу.
+    
+    Аргументы:
+        destination (str): Путь к папке для сохранения.
+        aps (list): Список словарей, содержащих ключи 'pre_start' и 'end'.
+        time (np.ndarray): 1D массив numpy содержащий значения времени.
+        voltage (np.ndarray): 1D массив numpy содержащий значения напряжения.
+
+    Возвращает:
+        None
+    """
     data = []
 
     for number, ap in enumerate(aps):
@@ -119,6 +100,17 @@ def save_aps_to_xlsx(destination, aps, time, voltage):
     df.to_excel(destination, index=False, engine='openpyxl')
 
 def preprocess(file, smooth = 15):
+    """
+    Предварительная обработка данных из файла.
+    
+    Аргументы:
+        file (str): Путь к текстовому файлу с исходными данными.
+        smooth (int, optional): Параметр сглаживания для алгоритма denoise_tv_chambolle.
+            По умолчанию равен 15.
+
+    Возвращает:
+        tuple: Кортеж из двух массивов numpy (время и напряжение).
+    """
     time, voltage = open_txt(file)
 
     time = time * 1000
@@ -128,10 +120,26 @@ def preprocess(file, smooth = 15):
     return time, voltage
 
 def find_action_potentials(time, voltage, alpha_threshold = 25, refractory_period = 10, start_offset = 80):
-    # "pre_start" - нулевое или время конца предыдущего ПД
-    # "start" - непосредственно начало фазы 0
-    # "peak" - максимум ПД
-    # "end" - минимум фазы 4
+    """
+    Находит ПД в данных времени и напряжения.
+
+    Функция анализирует производную напряжения по времени, выявляет начало фазы 0,
+    пик и конец фазы 4 для каждого потенциала действия. Возвращает список словарей с
+    индексами ключевых точек для каждого ПД.
+
+    Аргументы:
+        time (np.ndarray): 1D массив numpy содержащий значения времени.
+        voltage (np.ndarray): 1D массив numpy содержащий значения напряжения.
+        alpha_threshold (float, optional): Пороговое значение производной напряжения
+            для определения начала фазы 0. По умолчанию равен 25.
+        refractory_period (int, optional): Рефрактерный период между значениями напряжения.
+            По умолчанию равен 10.
+        start_offset (int, optional): Смещение для определения начала фазы 0.
+            По умолчанию равно 80.
+
+    Возвращает:
+        list: Список словарей с индексами ключевых точек для каждого ПД.
+    """
     voltage_derivative = np.diff(voltage) / np.diff(time)
 
     candidate_phase_0_start_indices = np.where(voltage_derivative > alpha_threshold)[0]
@@ -162,6 +170,17 @@ def find_action_potentials(time, voltage, alpha_threshold = 25, refractory_perio
     return action_potentials
 
 def find_voltage_speed(ap, time, voltage):
+    """
+    Находит среднюю скорость изменения напряжения для фаз 4 и 0 ПД.
+
+    Аргументы:
+        ap (dict): Словарь с индексами ключевых точек ПД.
+        time (np.ndarray): 1D массив numpy содержащий значения времени.
+        voltage (np.ndarray): 1D массив numpy содержащий значения напряжения.
+
+    Возвращает:
+        tuple: Кортеж из двух чисел - средней скорости изменения напряжения для фазы 4 и фазы 0.
+    """
     prestart_index = ap['pre_start']
     start_index = ap['start']
     peak_index = ap['peak']
@@ -177,8 +196,16 @@ def find_voltage_speed(ap, time, voltage):
     return np.mean(phase_4_speed), np.mean(phase_0_speed)
 
 def circle(time, voltage):
-    #plt.style.use('seaborn-whitegrid')
+    """
+    Вычисляет радиус и координаты центра окружности, наилучшим образом подходящей для точек на графике.
 
+    Аргументы:
+        time (np.ndarray): 1D массив numpy содержащий значения времени.
+        voltage (np.ndarray): 1D массив numpy содержащий значения напряжения.
+
+    Возвращает:
+        tuple: Кортеж из трех чисел - радиус окружности, координата X и координата Y центра окружности.
+    """
     def nearest_value(items_x, items_y, value_x, value_y):
         l = []
         for i in range(len(items_x)):
@@ -211,7 +238,6 @@ def circle(time, voltage):
 
         rad = sqrt((x_r - x_c)**2 + (y_r - y_c)**2)
 
-        #plt.gca().add_patch(plt.Circle((x_r, y_r), rad, color='lightblue', alpha=0.5))
         return rad, x_r, y_r
 
     x_t = list(time)
@@ -238,10 +264,6 @@ def circle(time, voltage):
         o -= 1
         ma = nearest_value(dff[0], dff[1], x[list(y).index(max(y))], min(y))
 
-    #set the size of graph
-    #f = plt.figure()
-    #f.set_figwidth(5*2*max(dff[0])/abs(min(dff[1])))
-    #f.set_figheight(5)
     rad, x_r, y_r = radius(dff[0][ma], dff[1][ma], dff[0][ma+o], dff[1][ma+o], dff[0][ma-o], dff[1][ma-o])
     return rad, x_r, y_r
 
