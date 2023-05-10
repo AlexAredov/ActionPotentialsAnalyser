@@ -17,6 +17,7 @@ import sys
 import shutil
 import warnings
 import math
+from concurrent.futures import ProcessPoolExecutor
 
 
 def open_txt(file):
@@ -90,7 +91,8 @@ def preprocess(file, smooth=15):
     """
     time, voltage = open_txt(file)
 
-    time = time * 1000
+    time = time[::4] * 1000
+    voltage = voltage[::4]
     voltage = denoise_tv_chambolle((voltage * 1000), smooth)
     voltage = gaussian_filter(voltage, 1)
 
@@ -178,74 +180,54 @@ def find_voltage_speed(ap, time, voltage):
 
 
 def circle(time, voltage):
-    """
-    Вычисляет радиус и координаты центра окружности, наилучшим образом подходящей для точек на графике.
-
-    Аргументы:
-        time (np.ndarray): 1D массив numpy содержащий значения времени.
-        voltage (np.ndarray): 1D массив numpy содержащий значения напряжения.
-
-    Возвращает:
-        tuple: Кортеж из трех чисел - радиус окружности, координата X и координата Y центра окружности.
-    """
-
     def nearest_value(items_x, items_y, value_x, value_y):
-        l = []
-        for i in range(len(items_x)):
-            l.append(round(sqrt((value_x - items_x[i]) ** 2 + (value_y - items_y[i]) ** 2), 3))
-        return (l.index(min(l)))
+        dist = np.sqrt((items_x - value_x) ** 2 + (items_y - value_y) ** 2)
+        return np.argmin(dist)
 
     def flat(x, y, n):
-        x1 = []
-        y1 = []
-        for i in range(0, len(x), n):
-            x1.append(round(x[i], 3))
-            y1.append(round(y[i], 3))
-        dat = [x1, y1]
-        return dat
+        return x[::n], y[::n]
 
     def radius(x_c, y_c, x_1, y_1, x_2, y_2):
-        cent1_x = (x_c + x_1) / 2
-        cent1_y = (y_c + y_1) / 2
-        cent2_x = (x_c + x_2) / 2
-        cent2_y = (y_c + y_2) / 2
+        cent1_x, cent1_y = (x_c + x_1) / 2, (y_c + y_1) / 2
+        cent2_x, cent2_y = (x_c + x_2) / 2, (y_c + y_2) / 2
 
-        k1 = round((cent1_x - x_c) / (cent1_y - y_c), 3)
-        b1 = round(cent1_y + k1 * cent1_x, 3)
+        k1 = (cent1_x - x_c) / (cent1_y - y_c)
+        b1 = cent1_y + k1 * cent1_x
 
-        k2 = round((cent2_x - x_c) / (cent2_y - y_c), 3)
-        b2 = round(cent2_y + k2 * cent2_x, 3)
+        k2 = (cent2_x - x_c) / (cent2_y - y_c)
+        b2 = cent2_y + k2 * cent2_x
 
-        x_r = round((b2 - b1) / (k2 - k1), 3)
-        y_r = round(-k1 * x_r + b1, 3)
+        x_r = (b2 - b1) / (k2 - k1)
+        y_r = -k1 * x_r + b1
 
-        rad = round(sqrt((x_r - x_c) ** 2 + (y_r - y_c) ** 2), 3)
-
+        rad = np.sqrt((x_r - x_c) ** 2 + (y_r - y_c) ** 2)
         return rad, x_r, y_r
 
-    x_t = list(time)
-    y_t = list(voltage)
-
-    x = []
-    y = []
-    for i in range(len(x_t)):
-        if (x_t[i] < x_t[list(y_t).index(max(y_t))]) and (y_t[i] < min(y_t) / 2):
-            x.append(x_t[i])
-            y.append(y_t[i])
+    x = np.array(time)
+    y = np.array(voltage)
 
     l = 32
-    dff = flat(x, y, 32)
-    ma = nearest_value(dff[0], dff[1], x[list(y).index(max(y))], min(y))
+    dff = flat(x, y, l)
+    ma = nearest_value(dff[0], dff[1], x[np.argmax(y)], np.min(y))
 
     o = 10
 
+    # очень по гейски но что имеем
     while ma + o >= len(dff[0]):
         l = l // 2
+        if l == 0:  # проверка на ноль и замена нуля на 1
+            return 10, -10, 0
+
         dff = flat(x, y, l)
-        ma = nearest_value(dff[0], dff[1], x[list(y).index(max(y))], min(y))
-    while dff[1][ma + o] - dff[1][ma] >= 3:
+        ma = nearest_value(dff[0], dff[1], x[np.argmax(y)], np.min(y))
+
+    while dff[1][ma + o] - dff[1][ma] >= 8:
+        if (dff[1][ma + o] - dff[1][ma]) / (dff[1][ma + (o - 1)] - dff[1][ma]) > 3.5:
+            o -= 1
+            ma = nearest_value(dff[0], dff[1], x[np.argmax(y)], np.min(y))
+            break
         o -= 1
-        ma = nearest_value(dff[0], dff[1], x[list(y).index(max(y))], min(y))
+        ma = nearest_value(dff[0], dff[1], x[np.argmax(y)], np.min(y))
 
     rad, x_r, y_r = radius(dff[0][ma], dff[1][ma], dff[0][ma + o], dff[1][ma + o], dff[0][ma - o], dff[1][ma - o])
     return rad, x_r, y_r
@@ -407,6 +389,7 @@ def save_aps_to_txt(destination, aps, time, voltage):
 
     return time_intervals
 
+
 def replace_nan_with_nearest(value_list, index):
     left, right = index - 1, index + 1
 
@@ -418,11 +401,34 @@ def replace_nan_with_nearest(value_list, index):
         left -= 1
         right += 1
     return 0
+
+
+def process_ap(args):
+    number, ap, time, voltage = args
+    phase_4_speed, phase_0_speed = find_voltage_speed(ap, time, voltage)
+    if math.isnan(phase_4_speed):
+        phase_4_speed = replace_nan_with_nearest(phase_4_speed_list, number)
+    if math.isnan(phase_0_speed):
+        phase_0_speed = replace_nan_with_nearest(phase_0_speed_list, number)
+    phase_4_speed = round(phase_4_speed, 3)
+    phase_0_speed = round(phase_0_speed, 3)
+    current_ap_time = time[ap['pre_start']:ap['end']]
+    current_ap_voltage = voltage[ap['pre_start']:ap['end']]
+    radius, _, _ = circle(current_ap_time, current_ap_voltage)
+    if math.isnan(radius):
+        radius = replace_nan_with_nearest(radius_list, number)
+    radius = round(radius, 3)
+    return phase_4_speed, phase_0_speed, radius
+
+
 # ----------------------------------------------------------------------------------------------
+
+
+# предположим, что все ваши функции уже импортированы или определены здесь
 
 if __name__ == "__main__":
     C_sharp_data = sys.argv[1]
-    # C_sharp_data = "D:/programming/projects/py/potentials/source/8.txt"
+    # C_sharp_data = "D:/programming/projects/py/source/long_sample_data2019.txt"
     warnings.filterwarnings("ignore")
 
     file = C_sharp_data
@@ -435,17 +441,20 @@ if __name__ == "__main__":
     time, voltage = preprocess(file)
     action_potentials = find_action_potentials(time, voltage, alpha_threshold=2.5, start_offset=25)
 
+    # <
     # Сохраняем каждые ПД в папку и получаем временные интервалы
     intervals = save_aps_to_txt(separating_path, action_potentials, time, voltage)
-
+    # >
     phase_4_speed_list = []
     phase_0_speed_list = []
     num_of_APs = []
     radius_list = []
 
     for number, ap in enumerate(action_potentials):
+        # <
         phase_4_speed, phase_0_speed = find_voltage_speed(ap, time, voltage)
-
+        # >
+        # <
         if math.isnan(phase_4_speed):
             phase_4_speed = replace_nan_with_nearest(phase_4_speed_list, number)
         if math.isnan(phase_0_speed):
@@ -457,7 +466,9 @@ if __name__ == "__main__":
         phase_4_speed_list.append(phase_4_speed)
         phase_0_speed_list.append(phase_0_speed)
         num_of_APs.append(number + 1)
+        # >
 
+        # <
         current_ap_time = time[ap['pre_start']:ap['end']]
         current_ap_voltage = voltage[ap['pre_start']:ap['end']]
 
@@ -466,6 +477,7 @@ if __name__ == "__main__":
             radius = replace_nan_with_nearest(radius_list, number)
 
         radius_list.append(round(radius, 3))
+        # >
 
     print(intervals)
     print(separating_path)
@@ -473,3 +485,112 @@ if __name__ == "__main__":
     print(phase_4_speed_list)
     print(num_of_APs)
     print(radius_list)
+
+"""
+if __name__ == "__main__":
+    C_sharp_data = sys.argv[1]
+    # C_sharp_data = "D:/programming/projects/py/source/long_sample_data2019.txt"
+    warnings.filterwarnings("ignore")
+
+    file = C_sharp_data
+    separating_folder = "separated_APs"
+
+    file_folder = os.path.dirname(file)  # получаем путь до папки перед файлом
+    separating_path = os.path.join(file_folder, separating_folder).replace('\\',
+                                                                           '/')  # добавляем separating_folder в конец
+
+    time, voltage = preprocess(file)
+    action_potentials = find_action_potentials(time, voltage, alpha_threshold=2.5, start_offset=25)
+
+    # <
+    # Сохраняем каждые ПД в папку и получаем временные интервалы
+    intervals = save_aps_to_txt(separating_path, action_potentials, time, voltage)
+    # >
+    phase_4_speed_list = []
+    phase_0_speed_list = []
+    num_of_APs = []
+    radius_list = []
+
+    for number, ap in enumerate(action_potentials):
+        # <
+        phase_4_speed, phase_0_speed = find_voltage_speed(ap, time, voltage)
+        # >
+        # <
+        if math.isnan(phase_4_speed):
+            phase_4_speed = replace_nan_with_nearest(phase_4_speed_list, number)
+        if math.isnan(phase_0_speed):
+            phase_0_speed = replace_nan_with_nearest(phase_0_speed_list, number)
+
+        phase_4_speed = round(phase_4_speed, 3)
+        phase_0_speed = round(phase_0_speed, 3)
+
+        phase_4_speed_list.append(phase_4_speed)
+        phase_0_speed_list.append(phase_0_speed)
+        num_of_APs.append(number + 1)
+        # >
+
+        # <
+        current_ap_time = time[ap['pre_start']:ap['end']]
+        current_ap_voltage = voltage[ap['pre_start']:ap['end']]
+
+        radius, _, _ = circle(current_ap_time, current_ap_voltage)
+        if math.isnan(radius):
+            radius = replace_nan_with_nearest(radius_list, number)
+
+        radius_list.append(round(radius, 3))
+        # >
+
+    print(intervals)
+    print(separating_path)
+    print(phase_0_speed_list)
+    print(phase_4_speed_list)
+    print(num_of_APs)
+    print(radius_list)
+"""
+
+"""
+    # <
+    # Сохраняем каждые ПД в папку и получаем временные интервалы
+    intervals = save_aps_to_txt(separating_path, action_potentials, time, voltage)
+    # >
+    phase_4_speed_list = []
+    phase_0_speed_list = []
+    num_of_APs = []
+    radius_list = []
+
+    for number, ap in enumerate(action_potentials):
+        # <
+        phase_4_speed, phase_0_speed = find_voltage_speed(ap, time, voltage)
+        # >
+        # <
+        if math.isnan(phase_4_speed):
+            phase_4_speed = replace_nan_with_nearest(phase_4_speed_list, number)
+        if math.isnan(phase_0_speed):
+            phase_0_speed = replace_nan_with_nearest(phase_0_speed_list, number)
+
+        phase_4_speed = round(phase_4_speed, 3)
+        phase_0_speed = round(phase_0_speed, 3)
+
+        phase_4_speed_list.append(phase_4_speed)
+        phase_0_speed_list.append(phase_0_speed)
+        num_of_APs.append(number + 1)
+        # >
+
+        # <
+        current_ap_time = time[ap['pre_start']:ap['end']]
+        current_ap_voltage = voltage[ap['pre_start']:ap['end']]
+
+        radius, _, _ = circle(current_ap_time, current_ap_voltage)
+        if math.isnan(radius):
+            radius = replace_nan_with_nearest(radius_list, number)
+
+        radius_list.append(round(radius, 3))
+        # >
+
+    print(intervals)
+    print(separating_path)
+    print(phase_0_speed_list)
+    print(phase_4_speed_list)
+    print(num_of_APs)
+    print(radius_list)
+"""

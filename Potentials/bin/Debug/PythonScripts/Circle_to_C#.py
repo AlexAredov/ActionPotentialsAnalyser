@@ -70,25 +70,15 @@ def preprocess(file, smooth=15):
 
 def circle(time, voltage):
     def nearest_value(items_x, items_y, value_x, value_y):
-        l = []
-        for i in range(len(items_x)):
-            l.append(sqrt((value_x - items_x[i]) ** 2 + (value_y - items_y[i]) ** 2))
-        return (l.index(min(l)))
+        dist = np.sqrt((items_x - value_x) ** 2 + (items_y - value_y) ** 2)
+        return np.argmin(dist)
 
     def flat(x, y, n):
-        x1 = []
-        y1 = []
-        for i in range(0, len(x), n):
-            x1.append(x[i])
-            y1.append(y[i])
-        dat = [x1, y1]
-        return dat
+        return x[::n], y[::n]
 
     def radius(x_c, y_c, x_1, y_1, x_2, y_2):
-        cent1_x = (x_c + x_1) / 2
-        cent1_y = (y_c + y_1) / 2
-        cent2_x = (x_c + x_2) / 2
-        cent2_y = (y_c + y_2) / 2
+        cent1_x, cent1_y = (x_c + x_1) / 2, (y_c + y_1) / 2
+        cent2_x, cent2_y = (x_c + x_2) / 2, (y_c + y_2) / 2
 
         k1 = (cent1_x - x_c) / (cent1_y - y_c)
         b1 = cent1_y + k1 * cent1_x
@@ -99,38 +89,38 @@ def circle(time, voltage):
         x_r = (b2 - b1) / (k2 - k1)
         y_r = -k1 * x_r + b1
 
-        rad = sqrt((x_r - x_c) ** 2 + (y_r - y_c) ** 2)
+        rad = np.sqrt((x_r - x_c) ** 2 + (y_r - y_c) ** 2)
         return rad, x_r, y_r
 
-    x_t = list(time)
-    y_t = list(voltage)
-
-    x = []
-    y = []
-    for i in range(len(x_t)):
-        x.append(x_t[i])
-        y.append(y_t[i])
+    x = np.array(time)
+    y = np.array(voltage)
 
     l = 32
-    dff = flat(x, y, 32)
-    ma = nearest_value(dff[0], dff[1], x[list(y).index(max(y))], min(y))
+    dff = flat(x, y, l)
+    ma = nearest_value(dff[0], dff[1], x[np.argmax(y)], np.min(y))
 
     o = 10
 
+    # очень по гейски но что имеем
     while ma + o >= len(dff[0]):
         l = l // 2
+        if l == 0:  # проверка на ноль и замена нуля на 1
+            return 10, -10, 0
+
         dff = flat(x, y, l)
-        ma = nearest_value(dff[0], dff[1], x[list(y).index(max(y))], min(y))
+        ma = nearest_value(dff[0], dff[1], x[np.argmax(y)], np.min(y))
+
     while dff[1][ma + o] - dff[1][ma] >= 8:
         if (dff[1][ma + o] - dff[1][ma]) / (dff[1][ma + (o - 1)] - dff[1][ma]) > 3.5:
             o -= 1
-            ma = nearest_value(dff[0], dff[1], x[list(y).index(max(y))], min(y))
+            ma = nearest_value(dff[0], dff[1], x[np.argmax(y)], np.min(y))
             break
         o -= 1
-        ma = nearest_value(dff[0], dff[1], x[list(y).index(max(y))], min(y))
+        ma = nearest_value(dff[0], dff[1], x[np.argmax(y)], np.min(y))
 
     rad, x_r, y_r = radius(dff[0][ma], dff[1][ma], dff[0][ma + o], dff[1][ma + o], dff[0][ma - o], dff[1][ma - o])
     return rad, x_r, y_r
+
 
 
 def find_action_potentials(time, voltage, alpha_threshold=25, refractory_period=10, start_offset=80):
@@ -210,6 +200,7 @@ def find_voltage_speed(ap, time, voltage):
 
     return np.mean(phase_4_speed), np.mean(phase_0_speed)
 
+
 def replace_nan_with_nearest(value_list, index):
     left, right = index - 1, index + 1
 
@@ -221,6 +212,8 @@ def replace_nan_with_nearest(value_list, index):
         left -= 1
         right += 1
     return None
+
+
 # ----------------------------------------------------------------------------------------------
 if __name__ == "__main__":
     C_sharp_data = sys.argv[1]
@@ -246,7 +239,6 @@ if __name__ == "__main__":
             phase_0_speed = 0
         phase_4_speed = round(phase_4_speed, 3)
         phase_0_speed = round(phase_0_speed, 3)
-
 
     print(round(radius, 3))
     print(round(x, 3))

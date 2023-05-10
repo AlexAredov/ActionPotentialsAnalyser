@@ -24,6 +24,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using ScottPlot.Plottable;
 using System.Threading.Tasks;
+using System.Drawing;
 
 namespace Potentials
 {
@@ -113,8 +114,18 @@ namespace Potentials
             if (openFileDialog.ShowDialog() == true)
             {
                 raw_filepath = openFileDialog.FileName;
-                //await RunLongOperationAsync();
+                await RunLongOperationAsync();
 
+                // сохранение пути к выбранному файлу в переменной raw_filepath и "/" заменяем "\" на "/"
+                FileNameTextBox.Text = System.IO.Path.GetFileName(raw_filepath); // извлекаем имя файла;
+
+            }
+        }
+        // сюда не смотрим, это на случай если будем распараллеливать открытие большого файла
+        private async Task RunLongOperationAsync()
+        {
+            await Task.Run(() =>
+            {
                 // Здесь выполняется самая длительная операция
 
                 string scriptPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PythonScripts", "Save_APs_to_C#.py");
@@ -127,16 +138,6 @@ namespace Potentials
                 radius_array = pythonData.Item6;
 
                 check = true;
-                // сохранение пути к выбранному файлу в переменной raw_filepath и "/" заменяем "\" на "/"
-                FileNameTextBox.Text = System.IO.Path.GetFileName(raw_filepath); // извлекаем имя файла;
-
-            }
-        }
-        // сюда не смотрим, это на случай если будем распараллеливать открытие большого файла
-        private async Task RunLongOperationAsync()
-        {
-            await Task.Run(() =>
-            {
 
             });
         }
@@ -198,12 +199,89 @@ namespace Potentials
         }
 
         // Построить большой график со всеми ПД и графики изменения скоростей и радиуса от номера ПД
-        private void PlotAllBtn_Click(object sender, RoutedEventArgs e)
+        //private void PlotAllBtn_Click(object sender, RoutedEventArgs e)
+        //{
+        //    // Очистка графика перед построением
+        //    All_AP_Plot.Plot.Clear();
+        //
+        //    // Предварительно Нацеливаемся на 1 первый файл (хоть 1 то должен быть) 
+        //    targetFile = separating_path + "/1.txt";
+        //
+        //    // Обработка всех файлов в указанной директории
+        //    foreach (string filePath in Directory.GetFiles(separating_path))
+        //    {
+        //        if (System.IO.Path.GetExtension(filePath) != ".txt") continue; // Игнорируем файлы, отличные от .txt
+        //
+        //        // Считывание данных из файла
+        //        var data = File.ReadLines(filePath)
+        //        .Select(line => line.Split('\t'))
+        //        .Where(parts => parts.Length == 2)
+        //        .Select(parts =>
+        //        {
+        //            double time = 0;
+        //            double potential = 0;
+        //            double.TryParse(parts[0], NumberStyles.Any, CultureInfo.InvariantCulture, out time);
+        //            double.TryParse(parts[1], NumberStyles.Any, CultureInfo.InvariantCulture, out potential);
+        //            return new
+        //            {
+        //                Time = time,
+        //                Potential = potential
+        //            };
+        //        })
+        //        .ToArray();
+        //
+        //        // Построение графика
+        //        All_AP_Plot.Plot.AddScatter(
+        //            data.Select(point => point.Time).ToArray(),
+        //            data.Select(point => point.Potential).ToArray()
+        //        );
+        //    }
+        //
+        //    // Добавление пунктирных линий, соответствующих значениям из массива intervals
+        //    for (int i = 0; i < intervals.Length; i++)
+        //    {
+        //        for (int j = 0; j < intervals[i].Length; j++)
+        //        {
+        //            double xValue = intervals[i][j];
+        //            All_AP_Plot.Plot.AddVerticalLine(xValue, color: System.Drawing.Color.Gray, style: LineStyle.Dash);
+        //        }
+        //    }
+        //
+        //    // Обновление графика
+        //    All_AP_Plot.Refresh();
+        //
+        //    // находим длительность эксперимента в мс
+        //    double[] lastInterval = intervals[intervals.Length - 1];
+        //    double lastValue = lastInterval[lastInterval.Length - 1];
+        //
+        //    // Переводим миллисекунды в минуты, секунды и доли секунды
+        //    int minutes = (int)(lastValue / 60000);
+        //    int seconds = (int)((lastValue % 60000) / 1000);
+        //    int fractionalSeconds = (int)(lastValue % 1000);
+        //
+        //    // Форматируем значения в нужном формате
+        //    string formattedDuration = string.Format("{0:D2}:{1:D2}:{2:D3}", minutes, seconds, fractionalSeconds);
+        //
+        //    // Выводим сообщение с отформатированным значением
+        //    Experiment_duration_label.Content = "Experiment duration: " + formattedDuration;
+        //
+        //    RdV0_Plot.Plot.Clear();
+        //    RdV4_Plot.Plot.Clear();
+        //    dR_Plot.Plot.Clear();
+        //    RdV0_Plot.Plot.AddScatter(num_of_APs, phase_0_speed_array);
+        //    RdV4_Plot.Plot.AddScatter(num_of_APs, phase_4_speed_array);
+        //    dR_Plot.Plot.AddScatter(num_of_APs, radius_array);
+        //    RdV0_Plot.Refresh();
+        //    RdV4_Plot.Refresh();
+        //    dR_Plot.Refresh();
+        //}
+
+        private async void PlotAllBtn_Click(object sender, RoutedEventArgs e)
         {
             // Очистка графика перед построением
             All_AP_Plot.Plot.Clear();
 
-            // Предварительно Нацеливаемся на 1 первый файл (хоть 1 то должен быть) 
+            // Предварительно Нацеливаемся на 1 первый файл (хоть 1 то должен быть)
             targetFile = separating_path + "/1.txt";
 
             // Обработка всех файлов в указанной директории
@@ -211,23 +289,49 @@ namespace Potentials
             {
                 if (System.IO.Path.GetExtension(filePath) != ".txt") continue; // Игнорируем файлы, отличные от .txt
 
-                // Считывание данных из файла
-                var data = File.ReadLines(filePath)
-                    .Select(line => line.Split('\t'))
-                    .Where(parts => parts.Length == 2)
-                    .Select(parts => new
-                    {
-                        Time = double.Parse(parts[0], CultureInfo.InvariantCulture),
-                        Potential = double.Parse(parts[1], CultureInfo.InvariantCulture)
-                    })
-                    .ToArray();
+                // Считывание данных из файла в фоновом потоке
+                var data = await Task.Run(() =>
+                {
+                    List<double> times = new List<double>();
+                    List<double> potentials = new List<double>();
+                    int lineCount = 0;
 
+                    using (StreamReader reader = new StreamReader(filePath))
+                    {
+                        string line;
+                        while ((line = reader.ReadLine()) != null)
+                        {
+                            // читаем каждую третью строку
+                            if (lineCount % 14 == 0)
+                            {
+                                var parts = line.Split('\t');
+                                if (parts.Length == 2)
+                                {
+                                    if (double.TryParse(parts[0], NumberStyles.Any, CultureInfo.InvariantCulture, out double time) &&
+                                        double.TryParse(parts[1], NumberStyles.Any, CultureInfo.InvariantCulture, out double potential))
+                                    {
+                                        times.Add(time);
+                                        potentials.Add(potential);
+                                    }
+                                }
+                            }
+                            lineCount++;
+                        }
+                    }
+
+                    return new { Times = times, Potentials = potentials };
+                });
                 // Построение графика
-                All_AP_Plot.Plot.AddScatter(
-                    data.Select(point => point.Time).ToArray(),
-                    data.Select(point => point.Potential).ToArray()
-                );
+                All_AP_Plot.Plot.AddScatter(data.Times.ToArray(), data.Potentials.ToArray());
+
+                //Построение графика с использованием каждой 3-й точки
+                //var reducedTimes = data.Times.Where((_, index) => index % 5 == 0).ToArray();
+                //var reducedPotentials = data.Potentials.Where((_, index) => index % 5 == 0).ToArray();
+                //All_AP_Plot.Plot.AddScatter(reducedTimes, reducedPotentials);
             }
+
+            // Настройка пределов осей для отображения только первых 500 точек
+            All_AP_Plot.Plot.SetAxisLimits(0, 500, double.NaN, double.NaN);
 
             // Добавление пунктирных линий, соответствующих значениям из массива intervals
             for (int i = 0; i < intervals.Length; i++)
@@ -267,6 +371,7 @@ namespace Potentials
             RdV4_Plot.Refresh();
             dR_Plot.Refresh();
         }
+
 
         public static void ParseTime(string raw_time, out int minutes, out int seconds, out int fraction_seconds)
         {
