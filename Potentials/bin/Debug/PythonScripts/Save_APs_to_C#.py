@@ -157,12 +157,12 @@ def find_voltage_speed(ap, time, voltage):
     Находит среднюю скорость изменения напряжения для фаз 4 и 0 ПД.
 
     Аргументы:
-        ap (dict): Словарь с индексами ключевых точек ПД.
-        time (np.ndarray): 1D массив numpy содержащий значения времени.
-        voltage (np.ndarray): 1D массив numpy содержащий значения напряжения.
+    ap (dict): Словарь с индексами ключевых точек ПД.
+    time (np.ndarray): 1D массив numpy содержащий значения времени.
+    voltage (np.ndarray): 1D массив numpy содержащий значения напряжения.
 
     Возвращает:
-        tuple: Кортеж из двух чисел - средней скорости изменения напряжения для фазы 4 и фазы 0.
+    tuple: Кортеж из двух чисел - средней скорости изменения напряжения для фазы 4 и фазы 0.
     """
     prestart_index = ap['pre_start']
     start_index = ap['start']
@@ -206,7 +206,7 @@ def circle(time, voltage):
     x = np.array(time)
     y = np.array(voltage)
 
-    l = 32
+    l = 8
     dff = flat(x, y, l)
     ma = nearest_value(dff[0], dff[1], x[np.argmax(y)], np.min(y))
 
@@ -332,30 +332,6 @@ def plot_phase_0_speeds(aps, time, voltage, min_time_diff=0):
     plt.title("Фаза 0")
     plt.show()
 
-
-def plot_radiuses(aps, time, voltage, min_time_diff=0):
-    plt.figure()
-
-    times = []
-    radiuses = []
-
-    min_time_diff = min_time_diff * 60 * 1000
-
-    for ap in aps:
-        current_ap_time = time[ap['pre_start']]
-        current_ap_voltage = voltage[ap['pre_start']:ap['end']]
-        if not times or current_ap_time - times[-1] >= min_time_diff:
-            times.append(current_ap_time)
-            current_ap_radius, _, _ = circle(time[ap['pre_start']:ap['end']], current_ap_voltage)
-            radiuses.append(current_ap_radius)
-
-    plt.plot(times, radiuses)
-
-    plt.xlabel("Время (мс)")
-    plt.ylabel("Радиус кривизны ПД (у.е.)")
-    plt.show()
-
-
 def save_aps_to_txt(destination, aps, time, voltage):
     """
     Сохраняет ПД в текстовый файл в определенную папку.
@@ -428,7 +404,7 @@ def process_ap(args):
 
 if __name__ == "__main__":
     C_sharp_data = sys.argv[1]
-    # C_sharp_data = "D:/programming/projects/py/source/long_sample_data2019.txt"
+    # C_sharp_data = "D:/programming/projects/py/potentials/source/hundred.txt"
     lines = C_sharp_data.split('\n')
     warnings.filterwarnings("ignore")
 
@@ -438,6 +414,11 @@ if __name__ == "__main__":
     inp_start_offset = int(lines[2])
     inp_refractory_period = int(lines[3])
 
+    """
+    inp_alpha_threshold = 2.5
+    inp_start_offset = 25
+    inp_refractory_period = 10
+    """
     separating_folder = "separated_APs"
 
     file_folder = os.path.dirname(file)  # получаем путь до папки перед файлом

@@ -219,7 +219,7 @@ def replace_nan_with_nearest(value_list, index):
 # ----------------------------------------------------------------------------------------------
 if __name__ == "__main__":
     C_sharp_data = sys.argv[1]
-    # C_sharp_data = "D:/programming/projects/py/potentials/source/separated_APs/2.txt"
+    # C_sharp_data = "D:/programming/projects/py/potentials/source/separated_APs/1.txt"
     warnings.filterwarnings("ignore")
     lines = C_sharp_data.split('\n')
 
@@ -228,6 +228,12 @@ if __name__ == "__main__":
     inp_alpha_threshold = float(lines[1].replace(',', '.'))
     inp_start_offset = int(lines[2])
     inp_refractory_period = int(lines[3])
+
+    """
+    inp_alpha_threshold = 2.5
+    inp_start_offset = 25
+    inp_refractory_period = 10
+    """
 
     time, voltage = open_txt(file_path)
     # time, voltage = preprocess(file_path)

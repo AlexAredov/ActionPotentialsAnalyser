@@ -99,6 +99,7 @@ namespace Potentials
         double[] radius_array;
 
         int time_ms = 0;
+        int window_size = 3;
 
         string targetFile = "";
         double start_time = 0;
@@ -169,6 +170,7 @@ namespace Potentials
                     PlotAllBtn.IsEnabled = true;
                     SaveAP_Btn.IsEnabled = true;
                     FindAPBtn.IsEnabled = true;
+                    FindAP_by_number_Btn.IsEnabled = true;
                 }
             }
             else
@@ -332,107 +334,195 @@ namespace Potentials
 
         private async void PlotAllBtn_Click(object sender, RoutedEventArgs e)
         {
-            // Очистка графика перед построением
-            All_AP_Plot.Plot.Clear();
+            // проверка на window size
+            string check_window_sise = "";
 
-            // Предварительно Нацеливаемся на 1 первый файл (хоть 1 то должен быть)
-            targetFile = separating_path + "/1.txt";
-
-            // От борьбы 2 потоков за одни и те же данные
-            FindAPBtn.IsEnabled = false;
-
-            // Обработка всех файлов в указанной директории
-            foreach (string filePath in Directory.GetFiles(separating_path))
+            // Используем Dispatcher.BeginInvoke для обновления TextBox
+            await Application.Current.Dispatcher.BeginInvoke(new Action(() =>
             {
-                if (System.IO.Path.GetExtension(filePath) != ".txt") continue; // Игнорируем файлы, отличные от .txt
+                // Код, взаимодействующий с TextBox
+                check_window_sise = window_size_TextBox.Text.Trim();
+            }));
+            if (!int.TryParse(check_window_sise, out window_size) | !(window_size <= num_of_APs.Length - 1))
+            {
+                MessageBox.Show("Decrease the value of \"window_size\" or set it correctly");
+            }
+            else
+            {
+                // Очистка графика перед построением
+                All_AP_Plot.Plot.Clear();
 
-                // Считывание данных из файла в фоновом потоке
-                var data = await Task.Run(() =>
+                // Предварительно Нацеливаемся на 1 первый файл (хоть 1 то должен быть)
+                targetFile = separating_path + "/1.txt";
+
+                // От борьбы 2 потоков за одни и те же данные
+                FindAPBtn.IsEnabled = false;
+
+                // Обработка всех файлов в указанной директории
+                foreach (string filePath in Directory.GetFiles(separating_path))
                 {
-                    List<double> times = new List<double>();
-                    List<double> potentials = new List<double>();
-                    int lineCount = 0;
+                    if (System.IO.Path.GetExtension(filePath) != ".txt") continue; // Игнорируем файлы, отличные от .txt
 
-                    using (StreamReader reader = new StreamReader(filePath))
+                    // Считывание данных из файла в фоновом потоке
+                    var data = await Task.Run(() =>
                     {
-                        string line;
-                        while ((line = reader.ReadLine()) != null)
+                        List<double> times = new List<double>();
+                        List<double> potentials = new List<double>();
+                        int lineCount = 0;
+
+                        using (StreamReader reader = new StreamReader(filePath))
                         {
-                            // читаем каждую третью строку
-                            if (lineCount % 16 == 0)
+                            string line;
+                            while ((line = reader.ReadLine()) != null)
                             {
-                                var parts = line.Split('\t');
-                                if (parts.Length == 2)
+                                // читаем каждую третью строку
+                                if (lineCount % 16 == 0)
                                 {
-                                    if (double.TryParse(parts[0], NumberStyles.Any, CultureInfo.InvariantCulture, out double time) &&
-                                        double.TryParse(parts[1], NumberStyles.Any, CultureInfo.InvariantCulture, out double potential))
+                                    var parts = line.Split('\t');
+                                    if (parts.Length == 2)
                                     {
-                                        times.Add(time);
-                                        potentials.Add(potential);
+                                        if (double.TryParse(parts[0], NumberStyles.Any, CultureInfo.InvariantCulture, out double time) &&
+                                            double.TryParse(parts[1], NumberStyles.Any, CultureInfo.InvariantCulture, out double potential))
+                                        {
+                                            times.Add(time);
+                                            potentials.Add(potential);
+                                        }
                                     }
                                 }
+                                lineCount++;
                             }
-                            lineCount++;
                         }
-                    }
 
-                    return new { Times = times, Potentials = potentials };
-                });
-                // Построение графика
-                All_AP_Plot.Plot.AddScatterLines(data.Times.ToArray(), data.Potentials.ToArray(), lineWidth: 5, color: System.Drawing.Color.Black);
+                        return new { Times = times, Potentials = potentials };
+                    });
+                    // Построение графика
+                    All_AP_Plot.Plot.AddScatterLines(data.Times.ToArray(), data.Potentials.ToArray(), lineWidth: 5, color: System.Drawing.Color.Black);
 
-                // Возвращаем свободу дейсвий
-                FindAPBtn.IsEnabled = true;
+                    // Возвращаем свободу дейсвий
+                    FindAPBtn.IsEnabled = true;
 
-                //Построение графика с использованием каждой 3-й точки
-                //var reducedTimes = data.Times.Where((_, index) => index % 5 == 0).ToArray();
-                //var reducedPotentials = data.Potentials.Where((_, index) => index % 5 == 0).ToArray();
-                //All_AP_Plot.Plot.AddScatter(reducedTimes, reducedPotentials);
-            }
+                    //Построение графика с использованием каждой 3-й точки
+                    //var reducedTimes = data.Times.Where((_, index) => index % 5 == 0).ToArray();
+                    //var reducedPotentials = data.Potentials.Where((_, index) => index % 5 == 0).ToArray();
+                    //All_AP_Plot.Plot.AddScatter(reducedTimes, reducedPotentials);
+                }
 
-            // Настройка пределов осей для отображения только первых 500 точек
-            All_AP_Plot.Plot.SetAxisLimits(0, 2500, double.NaN, double.NaN);
+                // Настройка пределов осей для отображения только первых 500 точек
+                All_AP_Plot.Plot.SetAxisLimits(0, 2500, double.NaN, double.NaN);
 
-            // Добавление пунктирных линий, соответствующих значениям из массива intervals
-            for (int i = 0; i < intervals.Length; i++)
-            {
-                for (int j = 0; j < intervals[i].Length; j++)
+                // Добавление пунктирных линий, соответствующих значениям из массива intervals
+                for (int i = 0; i < intervals.Length; i++)
                 {
-                    double xValue = intervals[i][j];
-                    All_AP_Plot.Plot.AddVerticalLine(xValue, color: System.Drawing.Color.Gray, style: LineStyle.Dash);
+                    for (int j = 0; j < intervals[i].Length; j++)
+                    {
+                        double xValue = intervals[i][j];
+                        All_AP_Plot.Plot.AddVerticalLine(xValue, color: System.Drawing.Color.Gray, style: LineStyle.Dash);
+                    }
+                }
+
+                All_AP_Plot.Plot.SetAxisLimitsY(-100, 40);
+
+
+                All_AP_Plot.Plot.Benchmark(enable: true);
+
+                // Обновление графика
+                All_AP_Plot.Refresh();
+
+                // находим длительность эксперимента в мс
+                double[] lastInterval = intervals[intervals.Length - 1];
+                double lastValue = lastInterval[lastInterval.Length - 1];
+
+                // Переводим миллисекунды в минуты, секунды и доли секунды
+                int minutes = (int)(lastValue / 60000);
+                int seconds = (int)((lastValue % 60000) / 1000);
+                int fractionalSeconds = (int)(lastValue % 1000);
+
+                // Форматируем значения в нужном формате
+                string formattedDuration = string.Format("{0:D2}:{1:D2}:{2:D3}", minutes, seconds, fractionalSeconds);
+
+                // Выводим сообщение с отформатированным значением
+                Experiment_duration_label.Text = "Experiment duration: " + formattedDuration;
+
+                RdV0_Plot.Plot.Clear();
+                RdV4_Plot.Plot.Clear();
+                dR_Plot.Plot.Clear();
+
+                // фокусы для доверительных интервалов -------------------------------------------------------
+                var dV0 = ConfidenceIntervals(num_of_APs, phase_0_speed_array, window_size);
+                double[] num_of_APs_20 = dV0.Item1;
+                double[] means_dV0 = dV0.Item2;
+                double[] confidenceInterval_dV0 = dV0.Item3;
+                double[] confidenceInterval1_dV0 = dV0.Item4;
+
+                var dV4 = ConfidenceIntervals(num_of_APs, phase_4_speed_array, window_size);
+                double[] means_dV4 = dV4.Item2;
+                double[] confidenceInterval_dV4 = dV4.Item3;
+                double[] confidenceInterval1_dV4 = dV4.Item4;
+
+                var dR = ConfidenceIntervals(num_of_APs, radius_array, window_size);
+                double[] means_dR = dR.Item2;
+                double[] confidenceInterval_dR = dR.Item3;
+                double[] confidenceInterval1_dR = dR.Item4;
+
+                // Строим графики с доверительными интервалами 
+                RdV0_Plot.Plot.AddScatter(num_of_APs_20, means_dV0, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red));
+                RdV0_Plot.Plot.AddErrorBars(num_of_APs_20, means_dV0, confidenceInterval_dV0, confidenceInterval1_dV0);
+
+                RdV4_Plot.Plot.AddScatter(num_of_APs_20, means_dV4, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red));
+                RdV4_Plot.Plot.AddErrorBars(num_of_APs_20, means_dV4, confidenceInterval_dV4, confidenceInterval1_dV4);
+
+                dR_Plot.Plot.AddScatter(num_of_APs_20, means_dR);
+                dR_Plot.Plot.AddErrorBars(num_of_APs_20, means_dR, confidenceInterval_dR, confidenceInterval1_dR);
+
+
+                // Неактуально, для построения графиков без доверительных интервалов
+                //RdV0_Plot.Plot.AddScatter(num_of_APs, phase_0_speed_array, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red));
+                //RdV4_Plot.Plot.AddScatter(num_of_APs, phase_4_speed_array, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red));
+                //dR_Plot.Plot.AddScatter(num_of_APs, radius_array);
+
+                RdV0_Plot.Refresh();
+                RdV4_Plot.Refresh();
+                dR_Plot.Refresh();
+            }
+        }
+
+        // Делаем кортеж для потсроения доверительных интервалов с учетом windowSize
+        static Tuple<double[], double[], double[], double[]> ConfidenceIntervals(double[] num_of_APs, double[] phase_0_4_speed_or_Radius_array, int windowSize)
+        {
+            // фокусы для доверительных интервалов
+            List<double> num_of_APs_20 = new List<double>();
+            List<double> phase_0_speed_array_20 = new List<double>();
+
+            for (int i = 0; i < num_of_APs.Length; i++)
+            {
+                if (i % windowSize == 0)
+                {
+                    num_of_APs_20.Add(num_of_APs[i]);
+                    phase_0_speed_array_20.Add(phase_0_4_speed_or_Radius_array[i]);
                 }
             }
 
-            All_AP_Plot.Plot.SetAxisLimitsY(-100, 40);
+            //int windowSize = 10;
+            List<double> means = new List<double>();
+            List<double> standardDeviations = new List<double>();
 
-            // Обновление графика
-            All_AP_Plot.Refresh();
+            for (int i = 0; i < phase_0_4_speed_or_Radius_array.Length; i += windowSize)
+            {
+                double[] window = phase_0_4_speed_or_Radius_array.Skip(i).Take(windowSize).ToArray();
+                double mean = window.Average();
+                double sumOfSquaresOfDifferences = window.Select(val => (val - mean) * (val - mean)).Sum();
+                double standardDeviation = Math.Sqrt(sumOfSquaresOfDifferences / window.Length);
 
-            // находим длительность эксперимента в мс
-            double[] lastInterval = intervals[intervals.Length - 1];
-            double lastValue = lastInterval[lastInterval.Length - 1];
+                means.Add(mean);
+                standardDeviations.Add(standardDeviation);
+            }
+            // Доверительные интервалы для каждого окна:
+            double standardError = standardDeviations.Average() / Math.Sqrt(windowSize);
+            double confidenceInterval95 = 1.96 * standardError;
 
-            // Переводим миллисекунды в минуты, секунды и доли секунды
-            int minutes = (int)(lastValue / 60000);
-            int seconds = (int)((lastValue % 60000) / 1000);
-            int fractionalSeconds = (int)(lastValue % 1000);
-
-            // Форматируем значения в нужном формате
-            string formattedDuration = string.Format("{0:D2}:{1:D2}:{2:D3}", minutes, seconds, fractionalSeconds);
-
-            // Выводим сообщение с отформатированным значением
-            Experiment_duration_label.Text = "Experiment duration: " + formattedDuration;
-
-            RdV0_Plot.Plot.Clear();
-            RdV4_Plot.Plot.Clear();
-            dR_Plot.Plot.Clear();
-            RdV0_Plot.Plot.AddScatter(num_of_APs, phase_0_speed_array, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red));
-            RdV4_Plot.Plot.AddScatter(num_of_APs, phase_4_speed_array, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red));
-            dR_Plot.Plot.AddScatter(num_of_APs, radius_array);
-            RdV0_Plot.Refresh();
-            RdV4_Plot.Refresh();
-            dR_Plot.Refresh();
+            return Tuple.Create(num_of_APs_20.ToArray(), means.ToArray(), Enumerable.Repeat(confidenceInterval95, num_of_APs_20.Count).ToArray(), Enumerable.Repeat(confidenceInterval95, num_of_APs_20.Count).ToArray());
         }
+
 
 
         public static void ParseTime(string raw_time, out int minutes, out int seconds, out int fraction_seconds)
@@ -448,8 +538,8 @@ namespace Potentials
             seconds = int.Parse(time_parts[1]);
             fraction_seconds = int.Parse(time_parts[2]);
         }
-        
-        // найти по заданному времени участок и построить графики 
+
+        // найти по заданному времени участок и построить графики
         private void FindAPBtn_Click(object sender, RoutedEventArgs e)
         {
             try
@@ -494,7 +584,6 @@ namespace Potentials
                 // Возвращаем возможность строить остальное
                 PlotAllBtn.IsEnabled = true;
             }
-
         }
 
         // Будем распараллеливать открытие большого файла
@@ -506,6 +595,84 @@ namespace Potentials
             });
         }
 
+        private void FindAP_by_number_Btn_Click(object sender, RoutedEventArgs e)
+        {
+            // пока тут заглушка
+            try
+            {
+                // Чтобы 2 потока не боролись за одни и те же данные
+                PlotAllBtn.IsEnabled = false;
+
+                // Строим график для 1 ПД
+                raw_time = TimeTextBox.Text.Trim();
+
+                if (int.TryParse(NumberAP_TextBox.Text.Trim(), out int numberAP))
+                {
+                    var result = FindFileForNumber(separating_path, numberAP);
+                    targetFile = result.Item1;
+                    start_time = result.Item2;
+                    end_time = result.Item3;
+
+                    if (!string.IsNullOrEmpty(targetFile) & File.Exists(targetFile))
+                    {
+                        Plot_And_Refresh();
+
+                        // Код, взаимодействующий с Объектами
+                        Next_AP_Btn.IsEnabled = true;
+                        Previos_AP_Btn.IsEnabled = true;
+                    }
+                    else
+                    {
+                        MessageBox.Show("File not found.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                }
+                else
+                {
+                    MessageBox.Show("File not found.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+
+                // Возвращаем возможность строить остальное
+                PlotAllBtn.IsEnabled = true;
+
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"An error occurred: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+
+                // Возвращаем возможность строить остальное
+                PlotAllBtn.IsEnabled = true;
+            }
+        }
+        // метод для поиска файла по номеру ПД, пока заглушка
+        static Tuple<string, double, double> FindFileForNumber(string separating_path, int numberAP)
+        {
+            string targetFile = System.IO.Path.Combine(separating_path, $"{numberAP}.txt");
+            double startTime = 0;
+            double endTime = 0;
+
+            if (File.Exists(targetFile))
+            {
+                using (StreamReader sr = new StreamReader(targetFile))
+                {
+                    string[] firstLine = sr.ReadLine()?.Split('\t');
+                    string[] lastLine = null;
+                    string line;
+
+                    while ((line = sr.ReadLine()) != null)
+                    {
+                        lastLine = line.Split('\t');
+                    }
+
+                    if (lastLine != null)
+                    {
+                        startTime = double.Parse(firstLine[0], CultureInfo.InvariantCulture);
+                        endTime = double.Parse(lastLine[0], CultureInfo.InvariantCulture);
+                    }
+                }
+            }
+
+            return Tuple.Create(targetFile, startTime, endTime);
+        }
 
         // общий метод построения графиков в маленьком окошке и смещения красных прямых
         void Plot_And_Refresh()
@@ -565,6 +732,15 @@ namespace Potentials
                     //All_AP_Plot.Plot.AddHorizontalLine(0, color: System.Drawing.Color.Gray, style: LineStyle.Dash);
 
                     One_AP_Plot.Plot.SetAxisLimitsY(-90, 40);
+
+                    // Переход на большом графике к интересному месту
+                    All_AP_Plot.Plot.SetAxisLimitsX(start_time - 1000, end_time + 1000);
+                    All_AP_Plot.Plot.SetAxisLimitsY(-100, 30);
+
+
+
+                    One_AP_Plot.Plot.Benchmark(enable: true);
+                    All_AP_Plot.Plot.Benchmark(enable: true);
 
                     One_AP_Plot.Refresh();
                     All_AP_Plot.Refresh();
@@ -969,6 +1145,7 @@ namespace Potentials
             alpha_threshold_TextBox.Text = "2.5";
             start_offset_TextBox.Text = "25";
             refractory_period_TextBox.Text = "10";
+            window_size_TextBox.Text = "3";
         }
     }
 }
