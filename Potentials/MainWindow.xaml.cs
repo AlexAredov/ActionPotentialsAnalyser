@@ -64,11 +64,11 @@ namespace Potentials
 
             RdV0_Plot.Plot.Title("(dV/dt)0");
             RdV0_Plot.Plot.XLabel("Action Potential number");
-            RdV0_Plot.Plot.YLabel("Rate of Change (mV/ms)");
+            RdV0_Plot.Plot.YLabel("Rate of Change (V/s)");
 
             RdV4_Plot.Plot.Title("(dV/dt)4");
             RdV4_Plot.Plot.XLabel("Action Potential number");
-            RdV4_Plot.Plot.YLabel("Rate of Change (mV/ms)");
+            RdV4_Plot.Plot.YLabel("Rate of Change (mV/s)");
 
             dR_Plot.Plot.Title("Rate of change R");
             dR_Plot.Plot.XLabel("Action Potential number");
@@ -76,7 +76,7 @@ namespace Potentials
 
             // Прочий визуал, который подгружается по умолчанию
             One_AP_Plot.Plot.YAxis.Color(System.Drawing.Color.Blue);
-            One_AP_Plot.Plot.YAxis2.Label("Rate of Change (mV/ms)");
+            One_AP_Plot.Plot.YAxis2.Label("Rate of Change (V/s)");
             One_AP_Plot.Plot.YAxis2.Color(System.Drawing.Color.Red);
             One_AP_Plot.Plot.YAxis2.Ticks(true);
 
@@ -707,13 +707,16 @@ namespace Potentials
                     One_AP_Plot.Plot.AddScatterLines(time, voltage, lineWidth: 5, label: $"R = {current_radius}");
 
                     // calculate the first derivative
+
                     double[] deriv = new double[voltage.Length];
-                    for (int i = 1; i < deriv.Length; i++)
-                        deriv[i] = (voltage[i] - voltage[i - 1]) * time[i];
-                    deriv[0] = deriv[1];
+                    //for (int i = 1; i < deriv.Length; i++)
+                    //    deriv[i] = (voltage[i] - voltage[i - 1]) * time[i];
+                    //deriv[0] = deriv[1];
+
+                    deriv = CalculateDerivative(voltage, time);
 
                     // plot the first derivative in red on the secondary Y axis
-                    var dVdt = One_AP_Plot.Plot.AddScatterLines(time, deriv, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red), label: $"(dV/dt)0 =  {phase_0_speed}\r\n(dV/dt)4 = {phase_4_speed}");
+                    var dVdt = One_AP_Plot.Plot.AddScatterLines(time, deriv, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red), label: $"(dV/dt)0 =  {phase_0_speed} V/s\r\n(dV/dt)4 = {phase_4_speed} mV/s");
                     dVdt.YAxisIndex = 1;
                     dVdt.LineWidth = 3;
                     var legend = One_AP_Plot.Plot.Legend(enable: true);
@@ -757,6 +760,40 @@ namespace Potentials
             {
                 MessageBox.Show("Check next inputs:\nalpha-threshold\nstart-offset\nrefractory-period", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+
+        static double[] CalculateDerivative(double[] voltage, double[] time)
+        {
+            if (voltage.Length != time.Length)
+            {
+                throw new ArgumentException("The length of voltage and time arrays must be equal.");
+            }
+
+            int length = voltage.Length;
+            double[] deriv = new double[length];
+
+            for (int i = 0; i < length; i++)
+            {
+                if (i == 0)
+                {
+                    // Вычисляем первую производную для первого элемента
+                    deriv[i] = (voltage[i + 1] - voltage[i]) / (time[i + 1] - time[i]);
+                }
+                else if (i == length - 1)
+                {
+                    // Вычисляем первую производную для последнего элемента
+                    deriv[i] = (voltage[i] - voltage[i - 1]) / (time[i] - time[i - 1]);
+                }
+                else
+                {
+                    // Вычисляем среднее значение первых производных для внутренних элементов
+                    double forwardDifference = (voltage[i + 1] - voltage[i]) / (time[i + 1] - time[i]);
+                    double backwardDifference = (voltage[i] - voltage[i - 1]) / (time[i] - time[i - 1]);
+                    deriv[i] = (forwardDifference + backwardDifference) / 2.0;
+                }
+            }
+
+            return deriv;
         }
 
         // закинул конкретный момент времени, получил файлик и его границы

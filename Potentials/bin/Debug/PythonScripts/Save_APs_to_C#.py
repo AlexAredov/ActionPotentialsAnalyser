@@ -176,7 +176,7 @@ def find_voltage_speed(ap, time, voltage):
     phase_0_voltage = voltage[start_index:peak_index]
     phase_0_speed = np.diff(phase_0_voltage) / np.diff(phase_0_time)
 
-    return np.mean(phase_4_speed), np.mean(phase_0_speed)
+    return 1000 * np.mean(phase_4_speed), np.mean(phase_0_speed)
 
 
 def circle(time, voltage):
