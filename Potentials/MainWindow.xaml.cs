@@ -52,12 +52,12 @@ namespace Potentials
 
             // добавление названия графика и подписей осей
             One_AP_Plot.Plot.Title("Cardiac Action Potential\n(SA node)");
-            One_AP_Plot.Plot.XLabel("Time (milliseconds)");
+            One_AP_Plot.Plot.XLabel("Time (mm:ss:ff)");
             One_AP_Plot.Plot.YLabel("Membrane Potential (mV)");
             One_AP_Plot.Plot.SetAxisLimitsY(-100, 40);
 
             All_AP_Plot.Plot.Title("Cardiac Action Potential\n(SA node)");
-            All_AP_Plot.Plot.XLabel("Time (milliseconds)");
+            All_AP_Plot.Plot.XLabel("Time (mm:ss:ff)");
             All_AP_Plot.Plot.YLabel("Membrane Potential (mV)");
             All_AP_Plot.Plot.SetAxisLimitsY(-100, 40);
 
@@ -398,6 +398,10 @@ namespace Potentials
                     // Построение графика
                     All_AP_Plot.Plot.AddScatterLines(data.Times.ToArray(), data.Potentials.ToArray(), lineWidth: 5, color: System.Drawing.Color.Black);
 
+                    // используем наш custom formatter для формата времени под mm:ss:ff на большом графике
+                    All_AP_Plot.Plot.XAxis.TickLabelFormat(customTickFormatter);
+
+
                     // Возвращаем свободу дейсвий
                     FindAPBtn.IsEnabled = true;
 
@@ -586,15 +590,6 @@ namespace Potentials
             }
         }
 
-        // Будем распараллеливать открытие большого файла
-        private async Task RunLongPlotOneAP_Async()
-        {
-            await Task.Run(() =>
-            {
-                // Здесь выполняется построение графика
-            });
-        }
-
         private void FindAP_by_number_Btn_Click(object sender, RoutedEventArgs e)
         {
             // пока тут заглушка
@@ -740,6 +735,8 @@ namespace Potentials
                     All_AP_Plot.Plot.SetAxisLimitsX(start_time - 1000, end_time + 1000);
                     All_AP_Plot.Plot.SetAxisLimitsY(-100, 30);
 
+                    // используем наш custom formatter для формата времени под mm:ss:ff на маленьком графике
+                    One_AP_Plot.Plot.XAxis.TickLabelFormat(customTickFormatter);
 
 
                     One_AP_Plot.Plot.Benchmark(enable: true);
@@ -762,6 +759,14 @@ namespace Potentials
             }
         }
 
+        // меняет формат отображения с мс на нормальный mm:ss:ff
+        string customTickFormatter(double position)
+        {
+            TimeSpan times = TimeSpan.FromMilliseconds(position);
+            return times.ToString(@"mm\:ss\:fff");
+        }
+
+        // считает производную для маленького графика
         static double[] CalculateDerivative(double[] voltage, double[] time)
         {
             if (voltage.Length != time.Length)
