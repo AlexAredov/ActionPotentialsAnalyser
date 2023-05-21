@@ -37,15 +37,18 @@ def open_txt(file):
     Возвращает:
         tuple: Кортеж из двух массивов numpy (первый столбец данных, второй столбец данных).
     """
-    data = pd.read_csv(file, sep='\t', decimal=',', encoding='latin-1', 
-                       header=None, names=['time', 'voltage'])
-
-    # Конвертируем pandas dataframe в dask dataframe
-    data = dd.from_pandas(data, npartitions=2)
-
-    # Преобразуем тип данных
-    data['time'] = data['time'].astype(np.float64)
-    data['voltage'] = data['voltage'].astype(np.float64)
+    column_names = ['time', 'voltage']
+    column_types = {'time': np.float64, 'voltage': np.float64}
+    
+    # Читаем данные
+    try:
+        data = dd.read_csv(file, sep='\t', decimal=',', encoding='latin-1', 
+                       on_bad_lines='skip', header=None, names=column_names,
+                       dtype=column_types)
+    except ValueError:
+        data = dd.read_csv(file, sep='\t', decimal='.', encoding='latin-1', 
+                        on_bad_lines='skip', header=None, names=column_names,
+                        dtype=column_types)
 
     # Вычисляем и возвращаем результаты
     data = data.compute()

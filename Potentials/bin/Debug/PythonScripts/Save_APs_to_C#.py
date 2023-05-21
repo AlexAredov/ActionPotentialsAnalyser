@@ -32,14 +32,19 @@ def open_txt(file):
         tuple: Кортеж из двух массивов numpy (первый столбец данных, второй столбец данных).
     """
     column_names = ['time', 'voltage']
-    column_types = [np.float64, np.float64]
+    column_types = {'time': np.float64, 'voltage': np.float64}
     
     # Читаем данные
-    data = dd.read_csv(file, engine='c', sep='\t', decimal=',', encoding='latin-1', 
-                       on_bad_lines='skip', dtype=dict(zip(column_names, column_types)),
-                       header=None, names=column_names)
+    try:
+        data = dd.read_csv(file, sep='\t', decimal=',', encoding='latin-1', 
+                       on_bad_lines='skip', header=None, names=column_names,
+                       dtype=column_types)
+    except ValueError:
+        data = dd.read_csv(file, sep='\t', decimal='.', encoding='latin-1', 
+                        on_bad_lines='skip', header=None, names=column_names,
+                        dtype=column_types)
 
-    # Обрабатывайте данные
+    # Вычисляем и возвращаем результаты
     data = data.compute()
     time = data['time'].values
     voltage = data['voltage'].values
