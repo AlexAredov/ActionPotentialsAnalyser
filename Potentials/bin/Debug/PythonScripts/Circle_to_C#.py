@@ -24,6 +24,7 @@ import sys
 import shutil
 import warnings
 import math
+import dask.dataframe as dd
 
 
 def open_txt(file):
@@ -36,14 +37,34 @@ def open_txt(file):
     Возвращает:
         tuple: Кортеж из двух массивов numpy (первый столбец данных, второй столбец данных).
     """
-    with open(file, 'r') as file:
-        file_content = file.read()
-    file_content = file_content.replace(',', '.')
+    column_names = ['time', 'voltage']
+    column_types = [np.float64, np.float64]
 
-    with StringIO(file_content) as file_buffer:
-        data = np.genfromtxt(file_buffer, delimiter='\t', usecols=(0, 1))
+    try:
+        # Читаем данные
+        data = dd.read_csv(file, engine='c', sep='\t', decimal=',', encoding='latin-1',
+                           on_bad_lines='skip', dtype=dict(zip(column_names, column_types)),
+                           header=None, names=column_names)
 
-    return data[:, 0], data[:, 1]
+        # Обрабатывайте данные
+        data = data.compute()
+        time = data['time'].values
+        voltage = data['voltage'].values
+
+        return time, voltage
+
+    except ValueError as e:
+        # Читаем данные
+        data = dd.read_csv(file, engine='c', sep='\t', decimal='.', encoding='latin-1',
+                           on_bad_lines='skip', dtype=dict(zip(column_names, column_types)),
+                           header=None, names=column_names)
+
+        # Обрабатывайте данные
+        data = data.compute()
+        time = data['time'].values
+        voltage = data['voltage'].values
+
+        return time, voltage
 
 
 def preprocess(file, smooth=15):
@@ -60,12 +81,12 @@ def preprocess(file, smooth=15):
     """
     time, voltage = open_txt(file)
 
-    voltage = denoise_tv_chambolle((voltage), smooth)
+    time = time[::4] * 1000
+    voltage = voltage[::4]
+    voltage = denoise_tv_chambolle((voltage * 1000), smooth)
     voltage = gaussian_filter(voltage, 1)
 
-    quality = 3
-
-    return np.round(time, quality), np.round(voltage, quality)
+    return time, voltage
 
 
 def circle(time, voltage):
@@ -95,9 +116,13 @@ def circle(time, voltage):
     x = np.array(time)
     y = np.array(voltage)
 
-    l = 32
+    l = 8
+
+    max_y_arg = np.argmax(y)
+    min_y = np.min(y)
+
     dff = flat(x, y, l)
-    ma = nearest_value(dff[0], dff[1], x[np.argmax(y)], np.min(y))
+    ma = nearest_value(dff[0], dff[1], x[max_y_arg], min_y)
 
     o = 10
 
@@ -108,22 +133,21 @@ def circle(time, voltage):
             return 10, -10, 0
 
         dff = flat(x, y, l)
-        ma = nearest_value(dff[0], dff[1], x[np.argmax(y)], np.min(y))
+        ma = nearest_value(dff[0], dff[1], x[max_y_arg], min_y)
 
     while dff[1][ma + o] - dff[1][ma] >= 8:
         if (dff[1][ma + o] - dff[1][ma]) / (dff[1][ma + (o - 1)] - dff[1][ma]) > 3.5:
             o -= 1
-            ma = nearest_value(dff[0], dff[1], x[np.argmax(y)], np.min(y))
+            ma = nearest_value(dff[0], dff[1], x[max_y_arg], min_y)
             break
         o -= 1
-        ma = nearest_value(dff[0], dff[1], x[np.argmax(y)], np.min(y))
+        ma = nearest_value(dff[0], dff[1], x[max_y_arg], min_y)
 
     rad, x_r, y_r = radius(dff[0][ma], dff[1][ma], dff[0][ma + o], dff[1][ma + o], dff[0][ma - o], dff[1][ma - o])
     return rad, x_r, y_r
 
 
-
-def find_action_potentials(time, voltage, alpha_threshold=25, refractory_period=10, start_offset=80):
+def find_action_potentials(time, voltage, alpha_threshold=0.9, refractory_period=280, start_offset=0):
     """
     Находит ПД в данных времени и напряжения.
 
@@ -147,10 +171,9 @@ def find_action_potentials(time, voltage, alpha_threshold=25, refractory_period=
     voltage_derivative = np.diff(voltage) / np.diff(time)
 
     candidate_phase_0_start_indices = np.where(voltage_derivative > alpha_threshold)[0]
-    phase_0_start_indices = []
-    for i in range(len(candidate_phase_0_start_indices)):
-        if i == 0 or candidate_phase_0_start_indices[i] - candidate_phase_0_start_indices[i - 1] > refractory_period:
-            phase_0_start_indices.append(candidate_phase_0_start_indices[i])
+    diff_candidates = np.diff(candidate_phase_0_start_indices)
+
+    phase_0_start_indices = np.insert(candidate_phase_0_start_indices[1:][diff_candidates > refractory_period], 0, candidate_phase_0_start_indices[0])
 
     action_potentials = []
     for i, start_index in enumerate(phase_0_start_indices):
@@ -198,29 +221,42 @@ def find_voltage_speed(ap, time, voltage):
     phase_0_voltage = voltage[start_index:peak_index]
     phase_0_speed = np.diff(phase_0_voltage) / np.diff(phase_0_time)
 
-    return np.mean(phase_4_speed), np.mean(phase_0_speed)
+    return 1000 * np.mean(phase_4_speed), np.mean(phase_0_speed)
 
 
 def replace_nan_with_nearest(value_list, index):
     left, right = index - 1, index + 1
 
-    while left >= 0 or right < len(value_list):
-        if left >= 0 and not math.isnan(value_list[left]):
-            return value_list[left]
-        elif right < len(value_list) and not math.isnan(value_list[right]):
-            return value_list[right]
-        left -= 1
-        right += 1
-    return None
+    try:
+        while left >= 0 or right < len(value_list):
+            if left >= 0 and not math.isnan(value_list[left]):
+                return value_list[left]
+            elif right < len(value_list) and not math.isnan(value_list[right]):
+                return value_list[right]
+            left -= 1
+            right += 1
+    finally:
+        return None
 
 
 # ----------------------------------------------------------------------------------------------
 if __name__ == "__main__":
     C_sharp_data = sys.argv[1]
-    # C_sharp_data = "D:/programming/projects/py/potentials/source/separated_APs/2.txt"
+    # C_sharp_data = "D:/programming/projects/py/potentials/source/separated_APs/1.txt"
     warnings.filterwarnings("ignore")
+    lines = C_sharp_data.split('\n')
 
-    file_path = C_sharp_data
+    file_path = lines[0]
+
+    inp_alpha_threshold = float(lines[1].replace(',', '.'))
+    inp_start_offset = int(lines[2])
+    inp_refractory_period = int(lines[3])
+
+    """
+    inp_alpha_threshold = 2.5
+    inp_start_offset = 25
+    inp_refractory_period = 10
+    """
 
     time, voltage = open_txt(file_path)
     # time, voltage = preprocess(file_path)
@@ -229,7 +265,7 @@ if __name__ == "__main__":
 
     # добавим скорости в 0 и в 4 фазу
     # phase_4_speed, phase_0_speed = 999, 999
-    aps = find_action_potentials(time, voltage, alpha_threshold=2.5, start_offset=25)
+    aps = find_action_potentials(time, voltage, alpha_threshold=inp_alpha_threshold, start_offset=inp_start_offset, refractory_period=inp_refractory_period)
     phase_4_speed, phase_0_speed = 999, 999
     for number, ap in enumerate(aps):
         phase_4_speed, phase_0_speed = find_voltage_speed(ap, time, voltage)
@@ -245,6 +281,7 @@ if __name__ == "__main__":
     print(round(y, 3))
     print(phase_0_speed)
     print(phase_4_speed)
+
 
 # ----------------------------------------------------------------------------------------------
 
