@@ -18,6 +18,7 @@ import shutil
 import warnings
 import math
 from concurrent.futures import ProcessPoolExecutor
+import dask.dataframe as dd
 
 
 def open_txt(file):
@@ -30,14 +31,35 @@ def open_txt(file):
     Возвращает:
         tuple: Кортеж из двух массивов numpy (первый столбец данных, второй столбец данных).
     """
-    with open(file, 'r') as file:
-        file_content = file.read()
-    file_content = file_content.replace(',', '.')
+    column_names = ['time', 'voltage']
+    column_types = [np.float64, np.float64]
 
-    with StringIO(file_content) as file_buffer:
-        data = np.genfromtxt(file_buffer, delimiter='\t', usecols=(0, 1))
+    try:
+        # Читаем данные
+        data = dd.read_csv(file, engine='c', sep='\t', decimal=',', encoding='latin-1',
+                           on_bad_lines='skip', dtype=dict(zip(column_names, column_types)),
+                           header=None, names=column_names)
 
-    return np.round(data[:, 0], 6), np.round(data[:, 1], 6)
+        # Обрабатывайте данные
+        data = data.compute()
+        time = data['time'].values
+        voltage = data['voltage'].values
+
+        return time, voltage
+
+    except ValueError as e:
+        # Читаем данные
+        data = dd.read_csv(file, engine='c', sep='\t', decimal='.', encoding='latin-1',
+                           on_bad_lines='skip', dtype=dict(zip(column_names, column_types)),
+                           header=None, names=column_names)
+
+        # Обрабатывайте данные
+        data = data.compute()
+        time = data['time'].values
+        voltage = data['voltage'].values
+
+        return time, voltage
+
 
 
 def save_aps_to_xlsx(destination, aps, time, voltage):
@@ -96,9 +118,7 @@ def preprocess(file, smooth=15):
     voltage = denoise_tv_chambolle((voltage * 1000), smooth)
     voltage = gaussian_filter(voltage, 1)
 
-    quality = 3
-
-    return np.round(time, quality), np.round(voltage, quality)
+    return time, voltage
 
 
 def find_action_potentials(time, voltage, alpha_threshold=25, refractory_period=10, start_offset=80):
@@ -125,10 +145,9 @@ def find_action_potentials(time, voltage, alpha_threshold=25, refractory_period=
     voltage_derivative = np.diff(voltage) / np.diff(time)
 
     candidate_phase_0_start_indices = np.where(voltage_derivative > alpha_threshold)[0]
-    phase_0_start_indices = []
-    for i in range(len(candidate_phase_0_start_indices)):
-        if i == 0 or candidate_phase_0_start_indices[i] - candidate_phase_0_start_indices[i - 1] > refractory_period:
-            phase_0_start_indices.append(candidate_phase_0_start_indices[i])
+    diff_candidates = np.diff(candidate_phase_0_start_indices)
+
+    phase_0_start_indices = np.insert(candidate_phase_0_start_indices[1:][diff_candidates > refractory_period], 0, candidate_phase_0_start_indices[0])
 
     action_potentials = []
     for i, start_index in enumerate(phase_0_start_indices):
@@ -157,12 +176,12 @@ def find_voltage_speed(ap, time, voltage):
     Находит среднюю скорость изменения напряжения для фаз 4 и 0 ПД.
 
     Аргументы:
-        ap (dict): Словарь с индексами ключевых точек ПД.
-        time (np.ndarray): 1D массив numpy содержащий значения времени.
-        voltage (np.ndarray): 1D массив numpy содержащий значения напряжения.
+    ap (dict): Словарь с индексами ключевых точек ПД.
+    time (np.ndarray): 1D массив numpy содержащий значения времени.
+    voltage (np.ndarray): 1D массив numpy содержащий значения напряжения.
 
     Возвращает:
-        tuple: Кортеж из двух чисел - средней скорости изменения напряжения для фазы 4 и фазы 0.
+    tuple: Кортеж из двух чисел - средней скорости изменения напряжения для фазы 4 и фазы 0.
     """
     prestart_index = ap['pre_start']
     start_index = ap['start']
@@ -176,7 +195,7 @@ def find_voltage_speed(ap, time, voltage):
     phase_0_voltage = voltage[start_index:peak_index]
     phase_0_speed = np.diff(phase_0_voltage) / np.diff(phase_0_time)
 
-    return np.mean(phase_4_speed), np.mean(phase_0_speed)
+    return 1000 * np.mean(phase_4_speed), np.mean(phase_0_speed)
 
 
 def circle(time, voltage):
@@ -206,9 +225,13 @@ def circle(time, voltage):
     x = np.array(time)
     y = np.array(voltage)
 
-    l = 32
+    l = 8
+
+    max_y_arg = np.argmax(y)
+    min_y = np.min(y)
+
     dff = flat(x, y, l)
-    ma = nearest_value(dff[0], dff[1], x[np.argmax(y)], np.min(y))
+    ma = nearest_value(dff[0], dff[1], x[max_y_arg], min_y)
 
     o = 10
 
@@ -219,141 +242,19 @@ def circle(time, voltage):
             return 10, -10, 0
 
         dff = flat(x, y, l)
-        ma = nearest_value(dff[0], dff[1], x[np.argmax(y)], np.min(y))
+        ma = nearest_value(dff[0], dff[1], x[max_y_arg], min_y)
 
     while dff[1][ma + o] - dff[1][ma] >= 8:
         if (dff[1][ma + o] - dff[1][ma]) / (dff[1][ma + (o - 1)] - dff[1][ma]) > 3.5:
             o -= 1
-            ma = nearest_value(dff[0], dff[1], x[np.argmax(y)], np.min(y))
+            ma = nearest_value(dff[0], dff[1], x[max_y_arg], min_y)
             break
         o -= 1
-        ma = nearest_value(dff[0], dff[1], x[np.argmax(y)], np.min(y))
+        ma = nearest_value(dff[0], dff[1], x[max_y_arg], min_y)
 
     rad, x_r, y_r = radius(dff[0][ma], dff[1][ma], dff[0][ma + o], dff[1][ma + o], dff[0][ma - o], dff[1][ma - o])
     return rad, x_r, y_r
 
-
-def plot_ap(ap, time, voltage, number=''):
-    current_ap_time = time[ap['pre_start']:ap['end']]
-    current_ap_voltage = voltage[ap['pre_start']:ap['end']]
-
-    plt.figure()
-    plt.scatter(time[ap['pre_start']], voltage[ap['pre_start']], marker='o', color='black')
-    plt.scatter(time[ap['start']], voltage[ap['start']], marker='o', color='red')
-    plt.scatter(time[ap['peak']], voltage[ap['peak']], marker='o', color='green')
-    plt.scatter(time[ap['end']], voltage[ap['end']], marker='o', color='black')
-    plt.plot(current_ap_time, current_ap_voltage)
-    plt.xlabel("Время (мс)")
-    plt.ylabel("Напряжение (мВ)")
-    plt.title(f"{number} ПД")
-    plt.show()
-
-
-def plot_aps(aps, time, voltage):
-    plt.figure()
-    for ap in aps:
-        pre_start_index = ap['pre_start']
-        end_index = ap['end']
-        ap_time = time[pre_start_index:end_index + 1]
-        ap_voltage = voltage[pre_start_index:end_index + 1]
-
-        plt.plot(ap_time, ap_voltage)
-
-    plt.xlabel("Время (мс)")
-    plt.ylabel("Напряжение (мВ)")
-    plt.title("Найденные ПД")
-    plt.show()
-
-
-def plot_phase_4_speed(ap, time, voltage):
-    plt.figure()
-
-    phase_4_time = time[ap['pre_start']:ap['start']]
-    phase_4_voltage = voltage[ap['pre_start']:ap['start']]
-    phase_4_speed = np.diff(phase_4_voltage) / np.diff(phase_4_time)
-
-    plt.plot(phase_4_time[:-1], phase_4_speed)
-    plt.show()
-
-
-def plot_phase_0_speed(ap, time, voltage):
-    plt.figure()
-
-    phase_0_time = time[ap['start']:ap['peak']]
-    phase_0_voltage = voltage[ap['start']:ap['peak']]
-    phase_0_speed = np.diff(phase_0_voltage) / np.diff(phase_0_time)
-
-    plt.plot(phase_0_time[:-1], phase_0_speed)
-    plt.show()
-
-
-def plot_phase_4_speeds(aps, time, voltage, min_time_diff=0):
-    plt.figure()
-
-    phase_4_times = []
-    phase_4_speeds = []
-
-    min_time_diff = min_time_diff * 60 * 1000
-
-    for ap in aps:
-        phase_4_time = time[ap['pre_start']]
-        if not phase_4_times or phase_4_time - phase_4_times[-1] >= min_time_diff:
-            phase_4_times.append(phase_4_time)
-            phase_4_speed, _ = find_voltage_speed(ap, time, voltage)
-            phase_4_speeds.append(phase_4_speed)
-
-    plt.plot(phase_4_times, phase_4_speeds)
-
-    plt.xlabel("Время (мс)")
-    plt.ylabel("Скорость изменения напряжения (мВ/мс)")
-    plt.title("Фаза 4")
-    plt.show()
-
-
-def plot_phase_0_speeds(aps, time, voltage, min_time_diff=0):
-    plt.figure()
-
-    phase_0_times = []
-    phase_0_speeds = []
-
-    min_time_diff = min_time_diff * 60 * 1000
-
-    for ap in aps:
-        phase_0_time = time[ap['start']]
-        if not phase_0_times or phase_0_time - phase_0_times[-1] >= min_time_diff:
-            phase_0_times.append(phase_0_time)
-            _, phase_0_speed = find_voltage_speed(ap, time, voltage)
-            phase_0_speeds.append(phase_0_speed)
-
-    plt.plot(phase_0_times, phase_0_speeds)
-
-    plt.xlabel("Время (мс)")
-    plt.ylabel("Скорость изменения напряжения (мВ/мс)")
-    plt.title("Фаза 0")
-    plt.show()
-
-
-def plot_radiuses(aps, time, voltage, min_time_diff=0):
-    plt.figure()
-
-    times = []
-    radiuses = []
-
-    min_time_diff = min_time_diff * 60 * 1000
-
-    for ap in aps:
-        current_ap_time = time[ap['pre_start']]
-        current_ap_voltage = voltage[ap['pre_start']:ap['end']]
-        if not times or current_ap_time - times[-1] >= min_time_diff:
-            times.append(current_ap_time)
-            current_ap_radius, _, _ = circle(time[ap['pre_start']:ap['end']], current_ap_voltage)
-            radiuses.append(current_ap_radius)
-
-    plt.plot(times, radiuses)
-
-    plt.xlabel("Время (мс)")
-    plt.ylabel("Радиус кривизны ПД (у.е.)")
-    plt.show()
 
 
 def save_aps_to_txt(destination, aps, time, voltage):
@@ -393,14 +294,16 @@ def save_aps_to_txt(destination, aps, time, voltage):
 def replace_nan_with_nearest(value_list, index):
     left, right = index - 1, index + 1
 
-    while left >= 0 or right < len(value_list):
-        if left >= 0 and not math.isnan(value_list[left]):
-            return value_list[left]
-        elif right < len(value_list) and not math.isnan(value_list[right]):
-            return value_list[right]
-        left -= 1
-        right += 1
-    return 0
+    try:
+        while left >= 0 or right < len(value_list):
+            if left >= 0 and not math.isnan(value_list[left]):
+                return value_list[left]
+            elif right < len(value_list) and not math.isnan(value_list[right]):
+                return value_list[right]
+            left -= 1
+            right += 1
+    finally:
+        return 0
 
 
 def process_ap(args):
@@ -424,14 +327,23 @@ def process_ap(args):
 # ----------------------------------------------------------------------------------------------
 
 
-# предположим, что все ваши функции уже импортированы или определены здесь
-
 if __name__ == "__main__":
     C_sharp_data = sys.argv[1]
-    # C_sharp_data = "D:/programming/projects/py/source/long_sample_data2019.txt"
+    # C_sharp_data = "D:/programming/projects/py/potentials/source/hundred.txt"
+    lines = C_sharp_data.split('\n')
     warnings.filterwarnings("ignore")
 
+
+    file = lines[0]
+    inp_alpha_threshold = float(lines[1].replace(',', '.'))
+    inp_start_offset = int(lines[2])
+    inp_refractory_period = int(lines[3])   
+    """
     file = C_sharp_data
+    inp_alpha_threshold = 2.5
+    inp_start_offset = 25
+    inp_refractory_period = 10
+    """
     separating_folder = "separated_APs"
 
     file_folder = os.path.dirname(file)  # получаем путь до папки перед файлом
@@ -439,7 +351,7 @@ if __name__ == "__main__":
                                                                            '/')  # добавляем separating_folder в конец
 
     time, voltage = preprocess(file)
-    action_potentials = find_action_potentials(time, voltage, alpha_threshold=2.5, start_offset=25)
+    action_potentials = find_action_potentials(time, voltage, alpha_threshold=inp_alpha_threshold, start_offset=inp_start_offset, refractory_period=inp_refractory_period)
 
     # <
     # Сохраняем каждые ПД в папку и получаем временные интервалы
