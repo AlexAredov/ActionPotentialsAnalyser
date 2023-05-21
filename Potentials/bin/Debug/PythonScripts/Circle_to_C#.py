@@ -89,7 +89,7 @@ def preprocess(file, smooth=15):
     return time, voltage
 
 
-def circle(time, voltage):
+def circle(time, voltage, avr_rad):
     def nearest_value(items_x, items_y, value_x, value_y):
         dist = np.sqrt((items_x - value_x) ** 2 + (items_y - value_y) ** 2)
         return np.argmin(dist)
@@ -143,7 +143,7 @@ def circle(time, voltage):
 
     rad, x_r, y_r = radius(dff[0][ma], dff[1][ma], dff[0][ma + o], dff[1][ma + o], dff[0][ma - o], dff[1][ma - o])
     k = 0
-    while rad > 100:
+    while rad > avr_rad:
         k+=1
         ma -= 10
         rad, x_r, y_r = radius(dff[0][ma], dff[1][ma], dff[0][ma + o], dff[1][ma + o], dff[0][ma - o], dff[1][ma - o])
@@ -251,6 +251,8 @@ if __name__ == "__main__":
     warnings.filterwarnings("ignore")
     lines = C_sharp_data.split('\n')
 
+    avr_rad = 100
+
     file_path = lines[0]
 
     inp_alpha_threshold = float(lines[1].replace(',', '.'))
@@ -266,7 +268,7 @@ if __name__ == "__main__":
     time, voltage = open_txt(file_path)
     # time, voltage = preprocess(file_path)
 
-    radius, x, y = circle(time, voltage)
+    radius, x, y = circle(time, voltage, avr_rad)
 
     # добавим скорости в 0 и в 4 фазу
     # phase_4_speed, phase_0_speed = 999, 999
