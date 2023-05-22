@@ -67,7 +67,7 @@ def open_txt(file):
         return time, voltage
 
 
-def preprocess(file, smooth=15):
+def preprocess(file, smooth=5):
     """
     Предварительная обработка данных из файла.
 
@@ -82,9 +82,8 @@ def preprocess(file, smooth=15):
     time, voltage = open_txt(file)
 
     time = time[::4] * 1000
-    voltage = voltage[::4]
-    voltage = denoise_tv_chambolle((voltage * 1000), smooth)
-    voltage = gaussian_filter(voltage, 1)
+    voltage = voltage[::4] * 1000
+    voltage = gaussian_filter(voltage, smooth)
 
     return time, voltage
 
