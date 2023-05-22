@@ -483,5 +483,34 @@ namespace Potentials
                 }
             }
         }
+
+        // Функция для поиска питоно_ехе_файла
+        public static Tuple<bool, string> PromptForPythonExe(string prompt, string txtFilePath, string pythonExePath)
+        {
+            bool Is_python_file = false;
+
+            MessageBoxResult result = MessageBox.Show(prompt, "Ошибка", MessageBoxButton.YesNo);
+            if (result == MessageBoxResult.Yes)
+            {
+                OpenFileDialog openFileDialog = new OpenFileDialog();
+                openFileDialog.Filter = "Executable files (*.exe)|*.exe";
+
+                if (openFileDialog.ShowDialog() == true)
+                {
+                    if (Path.GetFileName(openFileDialog.FileName) != "python.exe")
+                    {
+                        MessageBoxResult anotherResult = MessageBox.Show("Вы уверены, что хотите выбрать этот файл?", "Предупреждение", MessageBoxButton.YesNo);
+                        if (anotherResult != MessageBoxResult.Yes)
+                        {
+                            return Tuple.Create(Is_python_file, pythonExePath);
+                        }
+                    }
+                    pythonExePath = openFileDialog.FileName;
+                    File.WriteAllText(txtFilePath, pythonExePath);
+                    Is_python_file = true;
+                }
+            }
+            return Tuple.Create(Is_python_file, pythonExePath);
+        }
     }
 }

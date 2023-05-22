@@ -62,6 +62,7 @@
         <Label x:Name="limit_radius_label" Content="limit-radius" HorizontalAlignment="Left" Margin="1025,2,0,0" VerticalAlignment="Top"/>
         <TextBox x:Name="limit_radius_TextBox" HorizontalAlignment="Left" Margin="1063,26,0,0" TextWrapping="Wrap" Text="2.5" VerticalAlignment="Top" Width="40" IsEnabled="False"/>
         <Label x:Name="alpha_threshold_label_Copy1" Content="float:" HorizontalAlignment="Left" Margin="1027,22,0,0" VerticalAlignment="Top"/>
+        <Button x:Name="Python_file_by_hand_btn" Content="Python" HorizontalAlignment="Left" Margin="7,30,0,0" VerticalAlignment="Top" Click="Python_file_by_hand_btn_Click"/>
     </Grid>
 
 </Window>

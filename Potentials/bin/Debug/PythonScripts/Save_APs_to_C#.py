@@ -99,7 +99,7 @@ def save_aps_to_xlsx(destination, aps, time, voltage):
     df.to_excel(destination, index=False, engine='openpyxl')
 
 
-def preprocess(file, smooth=15):
+def preprocess(file, smooth=5):
     """
     Предварительная обработка данных из файла.
 

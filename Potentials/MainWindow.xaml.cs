@@ -87,9 +87,14 @@ namespace Potentials
             RdV4_Plot.Plot.YAxis.Color(System.Drawing.Color.Red);
         }
 
+        // УСТАРЕЛО
+        //string pythonExePath = "C:/Python39/python.exe";
+
+        string pythonExePath = "";
+        string txtFilePath = "Python_FILE_PATH.txt";
+
         // Объявление переменных
         string raw_filepath = "c:\\";
-        string pythonExePath = "C:/Python39/python.exe";
         string separating_path = "";
         string ComboPath_with_params = "";
         string savedFilePath = "";
@@ -165,6 +170,8 @@ namespace Potentials
                     raw_filepath = openFileDialog.FileName;
                     //raw_filepath = RenameRussianToLatin(raw_filepath);
 
+                    // Код аналогичный UpdateBtn_Click ---
+
                     // Блокируем все от шаловливых ручек пользователя
                     Window_Block_All();
 
@@ -174,14 +181,20 @@ namespace Potentials
                     // сохранение пути к выбранному файлу в переменной raw_filepath и "/" заменяем "\" на "/"
                     FileNameTextBox.Text = System.IO.Path.GetFileName(raw_filepath); // извлекаем имя файла;
 
-                    // Строим все графики, кроме одиночного ПД
-                    await PlotAllAsync();
-
                     // Разблокируем кнопочки
                     SaveAP_Btn.IsEnabled = true;
                     FindAPBtn.IsEnabled = true;
                     FindAP_by_number_Btn.IsEnabled = true;
-                    UpdateStatisticBtn.IsEnabled = true;
+                    UpdateBtn.IsEnabled = true;
+                    Python_file_by_hand_btn.IsEnabled = true;
+
+                    // Кнопка устарела
+                    //PlotAllBtn.IsEnabled = true;
+
+                    // Строим все графики, кроме одиночного ПД
+                    await PlotAllAsync();
+
+                    // Конец кода аналогичного UpdateBtn_Click ---
 
                     FindAP_by_number_Btn_Click(sender, e);
 
@@ -851,12 +864,80 @@ namespace Potentials
             User_mode_bnt.IsChecked = true;
             foreach (var button in Backend.FindVisualChildren<Button>(this))
             {
-                if (button.Name != "OpenfileBtn")
+                button.IsEnabled = false;
+            }
+            foreach (var textbox in Backend.FindVisualChildren<TextBox>(this))
+            {
+                textbox.IsEnabled = false;
+            }
+            foreach (var radiobtn in Backend.FindVisualChildren<RadioButton>(this))
+            {
+                radiobtn.IsEnabled = false;
+            }
+
+            if (File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, txtFilePath)))
+            {
+                pythonExePath = File.ReadAllText(txtFilePath);
+                if (File.Exists(pythonExePath) && Path.GetFileName(pythonExePath) == "python.exe")
                 {
-                    button.IsEnabled = false;
+                    // Если все ок, то можем продолжить работу, иначе пользователь не имеет доступа к программе
+                    OpenfileBtn.IsEnabled = true;
+                    window_size_TextBox.IsEnabled = true;
+                    TimeTextBox.IsEnabled = true;
+                    NumberAP_TextBox.IsEnabled = true;
+                    Python_file_by_hand_btn.IsEnabled = true;
+                    foreach (var radiobtn in Backend.FindVisualChildren<RadioButton>(this))
+                    {
+                        radiobtn.IsEnabled = true;
+                    }
+                }
+                else
+                {
+                    // Удалим файл, если он битый
+                    File.Delete(txtFilePath);
+
+                    string prompt = "С файлом python.exe что-то не так. Хотите указать корректный файл вручную?";
+
+                    Tuple<bool, string> python_file_data = Backend.PromptForPythonExe(prompt, txtFilePath, pythonExePath);
+                    bool bool_python_file = python_file_data.Item1;
+                    pythonExePath = python_file_data.Item2;
+
+                    if (bool_python_file)
+                    {
+                        // Если все ок, то можем продолжить работу, иначе пользователь не имеет доступа к программе
+                        OpenfileBtn.IsEnabled = true;
+                        window_size_TextBox.IsEnabled = true;
+                        TimeTextBox.IsEnabled = true;
+                        NumberAP_TextBox.IsEnabled = true;
+                        Python_file_by_hand_btn.IsEnabled = true;
+                        foreach (var radiobtn in Backend.FindVisualChildren<RadioButton>(this))
+                        {
+                            radiobtn.IsEnabled = true;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                string prompt = "Файл python.exe не найден. Хотите указать его вручную?";
+
+                Tuple<bool, string> python_file_data = Backend.PromptForPythonExe(prompt, txtFilePath, pythonExePath);
+                bool bool_python_file = python_file_data.Item1;
+                pythonExePath = python_file_data.Item2;
+
+                if (bool_python_file)
+                {
+                    // Если все ок, то можем продолжить работу, иначе пользователь не имеет доступа к программе
+                    OpenfileBtn.IsEnabled = true;
+                    window_size_TextBox.IsEnabled = true;
+                    foreach (var radiobtn in Backend.FindVisualChildren<RadioButton>(this))
+                    {
+                        radiobtn.IsEnabled = true;
+                    }
                 }
             }
         }
+        
 
         private void Window_Block_All()
         {
@@ -869,7 +950,7 @@ namespace Potentials
             }
         }
 
-        // Логика для кнопочек
+        // Логика для Radio кнопочек
         private void Banana_mode_bnt_Checked(object sender, RoutedEventArgs e)
         {
             alpha_threshold_TextBox.IsEnabled = true;
@@ -894,6 +975,7 @@ namespace Potentials
             window_size_TextBox.Text = window_size.ToString();
         }
 
+        // Если пользователь изменил параметры и не хочет заново выбирать файл
         private async void UpdateBtn_Click(object sender, RoutedEventArgs e)
         {
             // Блокируем все от шаловливых ручек пользователя
@@ -910,6 +992,7 @@ namespace Potentials
             FindAPBtn.IsEnabled = true;
             FindAP_by_number_Btn.IsEnabled = true;
             UpdateBtn.IsEnabled = true;
+            Python_file_by_hand_btn.IsEnabled = true;
 
             // Кнопка устарела
             //PlotAllBtn.IsEnabled = true;
@@ -917,6 +1000,7 @@ namespace Potentials
             // Строим все графики, кроме одиночного ПД
             await PlotAllAsync();
         }
+
 
         private void ChangeAP_KeyDown(object sender, KeyEventArgs e)
         {
@@ -936,5 +1020,30 @@ namespace Potentials
             }
         }
 
+        // Если пользователь ебобо и решил полезь сам менять питон по ходу работы
+        private void Python_file_by_hand_btn_Click(object sender, RoutedEventArgs e)
+        {
+            bool local_check = false;
+
+            OpenFileDialog openFileDialog = new OpenFileDialog();
+            openFileDialog.Filter = "Executable files (*.exe)|*.exe";
+
+            if (openFileDialog.ShowDialog() == true)
+            {
+                if (Path.GetFileName(openFileDialog.FileName) != "python.exe")
+                {
+                    MessageBoxResult anotherResult = MessageBox.Show("Вы уверены, что хотите выбрать этот файл?", "Предупреждение", MessageBoxButton.YesNo);
+                    if (anotherResult != MessageBoxResult.Yes)
+                    {
+                        local_check = true;
+                    }
+                }
+                if (!local_check)
+                {
+                    pythonExePath = openFileDialog.FileName;
+                    File.WriteAllText(txtFilePath, pythonExePath);
+                }
+            }
+        }
     }
 }
