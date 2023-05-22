@@ -31,7 +31,7 @@ namespace Potentials
 {
     internal class Backend
     {
-        public static Tuple<string, double[][], double[], double[], double[], double[]> RunPythonScript_AllPD(string pythonPath, string scriptPath, string arguments)
+        public static Tuple<string, double[][], double[], double[], double[], double[], double[][]> RunPythonScript_AllPD(string pythonPath, string scriptPath, string arguments)
         {
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
@@ -81,8 +81,10 @@ namespace Potentials
                 string input_radius_list = lines[5];
                 double[] radius_list = JsonConvert.DeserializeObject<double[]>(input_radius_list);
 
+                string input_x_y_list = lines[6];
+                double[][] x_y_list = JsonConvert.DeserializeObject<double[][]>(input_x_y_list);
 
-                return Tuple.Create(separating_path, numbers, phase_0_speed_list, phase_4_speed_list, num_of_APs, radius_list);
+                return Tuple.Create(separating_path, numbers, phase_0_speed_list, phase_4_speed_list, num_of_APs, radius_list, x_y_list);
             }
         }
 

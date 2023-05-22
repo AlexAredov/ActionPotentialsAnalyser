@@ -26,6 +26,7 @@ using ScottPlot.Plottable;
 using System.Drawing;
 using System.Windows.Interop;
 using Path = System.IO.Path;
+using System.Text.RegularExpressions;
 
 namespace Potentials
 {
@@ -55,7 +56,7 @@ namespace Potentials
             One_AP_Plot.Plot.Title("Cardiac Action Potential\n(SA node)");
             One_AP_Plot.Plot.XLabel("Time (mm:ss:ff)");
             One_AP_Plot.Plot.YLabel("Membrane Potential (mV)");
-            One_AP_Plot.Plot.SetAxisLimitsY(-100, 40);
+            One_AP_Plot.Plot.SetAxisLimitsY(-150, 110);
 
             All_AP_Plot.Plot.Title("Cardiac Action Potential\n(SA node)");
             All_AP_Plot.Plot.XLabel("Time (mm:ss:ff)");
@@ -100,6 +101,7 @@ namespace Potentials
         double[] phase_4_speed_array;
         double[] num_of_APs;
         double[] radius_array;
+        double[][] x_y_array;
 
         int time_ms = 0;
         int window_size = 3;
@@ -115,6 +117,7 @@ namespace Potentials
         double alpha_threshold = 0.9;
         int start_offset = 0;
         int refractory_period = 280;
+        double limit_radius = 250;
 
         bool check = false;
         bool Params = false;
@@ -149,11 +152,12 @@ namespace Potentials
             //openFileDialog.InitialDirectory = "D:\\programming\\projects\\py\\potentials\\";
 
             // Проверим, не сломал ли пользователь параметры
-            bool Params = double.TryParse(alpha_threshold_TextBox.Text.Trim().Replace('.', ','), out alpha_threshold) & int.TryParse(start_offset_TextBox.Text.Trim(), out start_offset) & int.TryParse(refractory_period_TextBox.Text.Trim(), out refractory_period);
+            bool Params = double.TryParse(alpha_threshold_TextBox.Text.Trim().Replace('.', ','), out alpha_threshold) & int.TryParse(start_offset_TextBox.Text.Trim(), out start_offset) & int.TryParse(refractory_period_TextBox.Text.Trim(), out refractory_period) & double.TryParse(limit_radius_TextBox.Text.Trim().Replace('.', ','), out limit_radius);
 
             if (Params)
             {
                 alpha_threshold = Math.Round(alpha_threshold, 3);
+                limit_radius = Math.Round(limit_radius, 3);
 
                 // отображение диалогового окна
                 if (openFileDialog.ShowDialog() == true)
@@ -177,7 +181,9 @@ namespace Potentials
                     SaveAP_Btn.IsEnabled = true;
                     FindAPBtn.IsEnabled = true;
                     FindAP_by_number_Btn.IsEnabled = true;
-                    UpdateBtn.IsEnabled = true;
+                    UpdateStatisticBtn.IsEnabled = true;
+
+                    FindAP_by_number_Btn_Click(sender, e);
 
                     // Кнопка устарела
                     //PlotAllBtn.IsEnabled = true;
@@ -250,35 +256,34 @@ namespace Potentials
             await Task.Run(() =>
             {
                 // Здесь выполняется самая длительная операция
-                string raw_filepath_with_params = raw_filepath + "\n" + alpha_threshold.ToString() + "\n" + start_offset.ToString() + "\n" + refractory_period.ToString();
+                string raw_filepath_with_params = raw_filepath + "\n" + alpha_threshold.ToString() + "\n" + start_offset.ToString() + "\n" + refractory_period.ToString() + "\n" + limit_radius.ToString();
                 string scriptPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PythonScripts", "Save_APs_to_C#.py");
-                Tuple<string, double[][], double[], double[], double[], double[]> pythonData = Backend.RunPythonScript_AllPD(pythonExePath, scriptPath, raw_filepath_with_params);
+                Tuple<string, double[][], double[], double[], double[], double[], double[][]> pythonData = Backend.RunPythonScript_AllPD(pythonExePath, scriptPath, raw_filepath_with_params);
                 separating_path = pythonData.Item1;
                 intervals = pythonData.Item2;
                 phase_0_speed_array = pythonData.Item3;
                 phase_4_speed_array = pythonData.Item4;
                 num_of_APs = pythonData.Item5;
                 radius_array = pythonData.Item6;
+                x_y_array = pythonData.Item7;
 
                 check = true;
             });
         }
 
         
-
-        private async void PlotAllBtn_Click(object sender, RoutedEventArgs e)
+        // Кнопка выполняет функуцию обновления графика
+        private void PlotAllBtn_Click(object sender, RoutedEventArgs e)
         {
-            // для построения графика в UpdateBtn вся логика вынесена в отдельную функцию
-            await PlotAllAsync();
+            // вся логика вынесена в отдельную функцию
+            UpdateStatisticAsync();
         }
 
         // Строим все графики, кроме одиночного ПД
         private async Task PlotAllAsync()
         {
             // проверка на window size
-            string check_window_sise = window_size_TextBox.Text.Trim();
-
-            if (!int.TryParse(check_window_sise, out int window_size) | !(window_size <= num_of_APs.Length - 1))
+            if (!int.TryParse(window_size_TextBox.Text.Trim(), out int window_size) | !(window_size <= num_of_APs.Length - 1))
             {
                 MessageBox.Show("Decrease the value of \"window_size\" or set it correctly");
             }
@@ -315,7 +320,7 @@ namespace Potentials
                     }
                 }
 
-                All_AP_Plot.Plot.SetAxisLimitsY(-100, 40);
+                All_AP_Plot.Plot.SetAxisLimitsY(-100, 60);
 
                 All_AP_Plot.Plot.Benchmark(enable: true);
 
@@ -368,6 +373,75 @@ namespace Potentials
                 dR_Plot.Plot.AddScatter(num_of_APs_window_size, means_dR, lineStyle: LineStyle.Dot);
                 dR_Plot.Plot.AddErrorBars(num_of_APs_window_size, means_dR, null, confidenceInterval_dR);
 
+                RdV0_Plot.Plot.Benchmark(enable: true);
+                RdV4_Plot.Plot.Benchmark(enable: true);
+                dR_Plot.Plot.Benchmark(enable: true);
+
+                RdV0_Plot.Refresh();
+                RdV4_Plot.Refresh();
+                dR_Plot.Refresh();
+            }
+        }
+
+        private void UpdateStatisticAsync()
+        {
+            // проверка на window size
+            if (!int.TryParse(window_size_TextBox.Text.Trim(), out int window_size) | !(window_size <= num_of_APs.Length - 1))
+            {
+                MessageBox.Show("Decrease the value of \"window_size\" or set it correctly");
+            }
+            else
+            {
+                // находим длительность эксперимента в мс
+                double[] lastInterval = intervals[intervals.Length - 1];
+                double lastValue = lastInterval[lastInterval.Length - 1];
+
+                // Переводим миллисекунды в минуты, секунды и доли секунды
+                int minutes = (int)(lastValue / 60000);
+                int seconds = (int)((lastValue % 60000) / 1000);
+                int fractionalSeconds = (int)(lastValue % 1000);
+
+                // Форматируем значения в нужном формате
+                string formattedDuration = string.Format("{0:D2}:{1:D2}:{2:D3}", minutes, seconds, fractionalSeconds);
+
+                // Выводим сообщение с отформатированным значением
+                Experiment_duration_label.Text = "Experiment duration: " + formattedDuration;
+
+                RdV0_Plot.Plot.Clear();
+                RdV4_Plot.Plot.Clear();
+                dR_Plot.Plot.Clear();
+
+                // фокусы для доверительных интервалов -------------------------------------------------------
+                var dV0 = Backend.ConfidenceIntervals_same(num_of_APs, phase_0_speed_array, window_size);
+                double[] num_of_APs_window_size = dV0.Item1;
+                double[] means_dV0 = dV0.Item2;
+                double[] confidenceInterval_dV0 = dV0.Item3;
+
+                var dV4 = Backend.ConfidenceIntervals_same(num_of_APs, phase_4_speed_array, window_size);
+                double[] means_dV4 = dV4.Item2;
+                double[] confidenceInterval_dV4 = dV4.Item3;
+
+                var dR = Backend.ConfidenceIntervals_same(num_of_APs, radius_array, window_size);
+                double[] means_dR = dR.Item2;
+                double[] confidenceInterval_dR = dR.Item3;
+
+                // используем наш custom formatter для формата времени под mm:ss:ff на большом графике
+                All_AP_Plot.Plot.XAxis.TickLabelFormat(Backend.customTickFormatter);
+
+                // Строим графики с доверительными интервалами 
+                RdV0_Plot.Plot.AddScatter(num_of_APs_window_size, means_dV0, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red), lineStyle: LineStyle.Dot);
+                RdV0_Plot.Plot.AddErrorBars(num_of_APs_window_size, means_dV0, null, confidenceInterval_dV0);
+
+                RdV4_Plot.Plot.AddScatter(num_of_APs_window_size, means_dV4, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red), lineStyle: LineStyle.Dot);
+                RdV4_Plot.Plot.AddErrorBars(num_of_APs_window_size, means_dV4, null, confidenceInterval_dV4);
+
+                dR_Plot.Plot.AddScatter(num_of_APs_window_size, means_dR, lineStyle: LineStyle.Dot);
+                dR_Plot.Plot.AddErrorBars(num_of_APs_window_size, means_dR, null, confidenceInterval_dR);
+
+                RdV0_Plot.Plot.Benchmark(enable: true);
+                RdV4_Plot.Plot.Benchmark(enable: true);
+                dR_Plot.Plot.Benchmark(enable: true);
+
                 RdV0_Plot.Refresh();
                 RdV4_Plot.Refresh();
                 dR_Plot.Refresh();
@@ -388,7 +462,7 @@ namespace Potentials
             try
             {
                 // Чтобы 2 потока не боролись за одни и те же данные
-                PlotAllBtn.IsEnabled = false;
+                UpdateStatisticBtn.IsEnabled = false;
 
                 // Строим график для 1 ПД
                 raw_time = TimeTextBox.Text.Trim();
@@ -417,7 +491,7 @@ namespace Potentials
 
 
                 // Возвращаем возможность строить остальное
-                PlotAllBtn.IsEnabled = true;
+                UpdateStatisticBtn.IsEnabled = true;
 
             }
             catch (Exception ex)
@@ -425,7 +499,7 @@ namespace Potentials
                 MessageBox.Show($"An error occurred: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 
                 // Возвращаем возможность строить остальное
-                PlotAllBtn.IsEnabled = true;
+                UpdateStatisticBtn.IsEnabled = true;
             }
         }
 
@@ -434,7 +508,7 @@ namespace Potentials
             try
             {
                 // Чтобы 2 потока не боролись за одни и те же данные
-                PlotAllBtn.IsEnabled = false;
+                UpdateStatisticBtn.IsEnabled = false;
 
                 // Строим график для 1 ПД
                 raw_time = TimeTextBox.Text.Trim();
@@ -465,7 +539,7 @@ namespace Potentials
                 }
 
                 // Возвращаем возможность строить остальное
-                PlotAllBtn.IsEnabled = true;
+                UpdateStatisticBtn.IsEnabled = true;
 
             }
             catch (Exception ex)
@@ -473,7 +547,7 @@ namespace Potentials
                 MessageBox.Show($"An error occurred: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
 
                 // Возвращаем возможность строить остальное
-                PlotAllBtn.IsEnabled = true;
+                UpdateStatisticBtn.IsEnabled = true;
             }
         }
         
@@ -482,9 +556,101 @@ namespace Potentials
         void Plot_And_Refresh()
         {
             // Проверим, не сломал ли пользователь параметры
-            Params = double.TryParse(alpha_threshold_TextBox.Text.Trim().Replace('.', ','), out alpha_threshold) & int.TryParse(start_offset_TextBox.Text.Trim(), out start_offset) & int.TryParse(refractory_period_TextBox.Text.Trim(), out refractory_period);
+            Params = double.TryParse(alpha_threshold_TextBox.Text.Trim().Replace('.', ','), out alpha_threshold) & int.TryParse(start_offset_TextBox.Text.Trim(), out start_offset) & int.TryParse(refractory_period_TextBox.Text.Trim(), out refractory_period) & double.TryParse(limit_radius_TextBox.Text.Trim().Replace('.', ','), out limit_radius);
 
-            string targetFile_with_params = targetFile + "\n" + alpha_threshold.ToString() + "\n" + start_offset.ToString() + "\n" + refractory_period.ToString(); ;
+            string targetFile_with_params = targetFile + "\n" + alpha_threshold.ToString() + "\n" + start_offset.ToString() + "\n" + refractory_period.ToString() +"\n" + limit_radius.ToString();
+            if (Params)
+            {
+                alpha_threshold = Math.Round(alpha_threshold, 3);
+
+                double[] time, voltage;
+                if (Backend.ParseFileData(targetFile, out time, out voltage))
+                {
+                    // Очистка графика перед построением
+                    One_AP_Plot.Plot.Clear();
+
+                    // Убираем красные хуйни
+                    RemoveRedVerticalLines();
+
+                    int currentFileNum = Convert.ToInt32(Path.GetFileNameWithoutExtension(targetFile));
+
+                    //string scriptPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PythonScripts", "Circle_to_C#.py");
+                    //// Достаем данные для круга и скоростей
+                    //Tuple<double, double, double, double, double> CircleData = Backend.RunPythonScriptCircle(pythonExePath, scriptPath, targetFile_with_params);
+                    //current_radius = CircleData.Item1;
+                    //double x = CircleData.Item2;
+                    //double y = CircleData.Item3;
+                    //phase_0_speed = CircleData.Item4;
+                    //phase_4_speed = CircleData.Item5;
+
+                    // Строим заготовку
+                    One_AP_Plot.Plot.AddScatterLines(time, voltage, lineWidth: 5, label: $"R = {radius_array[currentFileNum-1]}");
+
+                    // calculate the first derivative
+
+                    double[] deriv = new double[voltage.Length];
+                    //for (int i = 1; i < deriv.Length; i++)
+                    //    deriv[i] = (voltage[i] - voltage[i - 1]) * time[i];
+                    //deriv[0] = deriv[1];
+
+                    deriv = Backend.CalculateDerivative(voltage, time);
+
+                    // plot the first derivative in red on the secondary Y axis
+                    var dVdt = One_AP_Plot.Plot.AddScatterLines(time, deriv, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red), label: $"(dV/dt)0 =  {phase_0_speed_array[currentFileNum-1]} V/s\r\n(dV/dt)4 = {phase_4_speed_array[currentFileNum - 1]} mV/s");
+                    dVdt.YAxisIndex = 1;
+                    dVdt.LineWidth = 3;
+                    var legend = One_AP_Plot.Plot.Legend(enable: true);
+                    legend.Orientation = ScottPlot.Orientation.Horizontal;
+
+
+                    // Добавляем красные хуйни
+                    All_AP_Plot.Plot.AddVerticalLine(start_time, color: System.Drawing.Color.Red, style: LineStyle.Solid);
+                    All_AP_Plot.Plot.AddVerticalLine(end_time, color: System.Drawing.Color.Red, style: LineStyle.Solid);
+
+                    // Добавляем на график круг
+                    One_AP_Plot.Plot.AddCircle(x_y_array[currentFileNum-1][0], x_y_array[currentFileNum-1][1], radius_array[currentFileNum - 1], color: System.Drawing.Color.Red);
+
+                    // добавление горизорнтальной полоски Овершут
+                    One_AP_Plot.Plot.AddHorizontalLine(0, color: System.Drawing.Color.Gray, style: LineStyle.Dash);
+                    //All_AP_Plot.Plot.AddHorizontalLine(0, color: System.Drawing.Color.Gray, style: LineStyle.Dash);
+
+                    One_AP_Plot.Plot.SetAxisLimitsY(-150, 110);
+
+                    // Переход на большом графике к интересному месту
+                    All_AP_Plot.Plot.SetAxisLimitsX(start_time - 1000, end_time + 1000);
+                    All_AP_Plot.Plot.SetAxisLimitsY(-100, 60);
+
+                    // используем наш custom formatter для формата времени под mm:ss:ff на маленьком графике
+                    One_AP_Plot.Plot.XAxis.TickLabelFormat(Backend.customTickFormatter);
+
+
+                    One_AP_Plot.Plot.Benchmark(enable: true);
+                    All_AP_Plot.Plot.Benchmark(enable: true);
+
+                    One_AP_Plot.Refresh();
+                    All_AP_Plot.Refresh();
+
+                    // Устарело
+                    // вывод радиуса и скоростей в лейблы
+                    //RdМ_lbl.Visibility = Visibility.Visible;
+                    //RdV_num_lbl.Visibility = Visibility.Visible;
+
+                    //RdV_num_lbl.Content = $"= {current_radius}\r\n= {phase_0_speed}\r\n= {phase_4_speed}";
+                }
+            }
+            else
+            {
+                MessageBox.Show("Check next inputs:\nalpha-threshold\nstart-offset\nrefractory-period", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        // УСТАРЕЛО, НЕ ИСПОЛЬЗУЕТСЯ общий метод построения графиков в маленьком окошке и смещения красных прямых
+        void Plot_And_Refresh_old()
+        {
+            // Проверим, не сломал ли пользователь параметры
+            Params = double.TryParse(alpha_threshold_TextBox.Text.Trim().Replace('.', ','), out alpha_threshold) & int.TryParse(start_offset_TextBox.Text.Trim(), out start_offset) & int.TryParse(refractory_period_TextBox.Text.Trim(), out refractory_period) & double.TryParse(limit_radius_TextBox.Text.Trim().Replace('.', ','), out limit_radius);
+
+            string targetFile_with_params = targetFile + "\n" + alpha_threshold.ToString() + "\n" + start_offset.ToString() + "\n" + refractory_period.ToString() + "\n" + limit_radius.ToString();
             if (Params)
             {
                 alpha_threshold = Math.Round(alpha_threshold, 3);
@@ -567,7 +733,7 @@ namespace Potentials
                 MessageBox.Show("Check next inputs:\nalpha-threshold\nstart-offset\nrefractory-period", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
-        
+
         // убрать все красные VLines
         private void RemoveRedVerticalLines()
         {
@@ -639,11 +805,11 @@ namespace Potentials
             await Application.Current.Dispatcher.BeginInvoke(new Action(() =>
             {
                 // Проверим, не сломал ли пользователь параметры
-                Params = double.TryParse(alpha_threshold_TextBox.Text.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out alpha_threshold) & int.TryParse(start_offset_TextBox.Text.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out start_offset) & int.TryParse(refractory_period_TextBox.Text.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out refractory_period);
+                Params = double.TryParse(alpha_threshold_TextBox.Text.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out alpha_threshold) & int.TryParse(start_offset_TextBox.Text.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out start_offset) & int.TryParse(refractory_period_TextBox.Text.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out refractory_period) & double.TryParse(limit_radius_TextBox.Text.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out limit_radius);
 
             }));
 
-            ComboPath_with_params = ComboPath + "\n" + alpha_threshold.ToString() + "\n" + start_offset.ToString() + "\n" + refractory_period.ToString(); ;
+            ComboPath_with_params = ComboPath + "\n" + alpha_threshold.ToString() + "\n" + start_offset.ToString() + "\n" + refractory_period.ToString() +"\n" + limit_radius.ToString();
 
             if (Params)
             {
@@ -709,6 +875,8 @@ namespace Potentials
             alpha_threshold_TextBox.IsEnabled = true;
             start_offset_TextBox.IsEnabled = true;
             refractory_period_TextBox.IsEnabled = true;
+            limit_radius_TextBox.IsEnabled = true;
+            UpdateBtn.IsEnabled = true;
         }
 
         private void User_mode_bnt_Checked(object sender, RoutedEventArgs e)
@@ -716,10 +884,13 @@ namespace Potentials
             alpha_threshold_TextBox.IsEnabled = false;
             start_offset_TextBox.IsEnabled = false;
             refractory_period_TextBox.IsEnabled = false;
+            limit_radius_TextBox.IsEnabled = false;
+            UpdateBtn.IsEnabled = false;
 
             alpha_threshold_TextBox.Text = alpha_threshold.ToString();
             start_offset_TextBox.Text = start_offset.ToString();
             refractory_period_TextBox.Text = refractory_period.ToString();
+            limit_radius_TextBox.Text = limit_radius.ToString();
             window_size_TextBox.Text = window_size.ToString();
         }
 
@@ -746,5 +917,24 @@ namespace Potentials
             // Строим все графики, кроме одиночного ПД
             await PlotAllAsync();
         }
+
+        private void ChangeAP_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (Keyboard.FocusedElement is WpfPlot) // или любой другой элемент, который вы хотите исключить
+            {
+                e.Handled = true; // поглощает событие
+                return;
+            }
+            if (e.Key == Key.Right)
+            {
+                // Обработка нажатия стрелки вправо
+                Next_AP_Btn_Click(sender, e);
+            }
+            if (e.Key == Key.Left)
+            {
+                Previos_AP_Btn_Click(sender, e);
+            }
+        }
+
     }
 }

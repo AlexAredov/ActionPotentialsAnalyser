@@ -89,7 +89,7 @@ def preprocess(file, smooth=15):
     return time, voltage
 
 
-def circle(time, voltage):
+def circle(time, voltage, avr_rad):
     def nearest_value(items_x, items_y, value_x, value_y):
         dist = np.sqrt((items_x - value_x) ** 2 + (items_y - value_y) ** 2)
         return np.argmin(dist)
@@ -116,34 +116,39 @@ def circle(time, voltage):
     x = np.array(time)
     y = np.array(voltage)
 
+    x = x[:np.argmax(y)]
+    y = y[:np.argmax(y)]
+
     l = 8
-
-    max_y_arg = np.argmax(y)
-    min_y = np.min(y)
-
     dff = flat(x, y, l)
-    ma = nearest_value(dff[0], dff[1], x[max_y_arg], min_y)
+    ma = nearest_value(dff[0], dff[1], x[np.argmax(y)], np.min(y))
 
     o = 10
 
-    # очень по гейски но что имеем
     while ma + o >= len(dff[0]):
         l = l // 2
-        if l == 0:  # проверка на ноль и замена нуля на 1
+        if l == 0:
             return 10, -10, 0
 
         dff = flat(x, y, l)
-        ma = nearest_value(dff[0], dff[1], x[max_y_arg], min_y)
+        ma = nearest_value(dff[0], dff[1], x[np.argmax(y)], np.min(y))
 
     while dff[1][ma + o] - dff[1][ma] >= 8:
         if (dff[1][ma + o] - dff[1][ma]) / (dff[1][ma + (o - 1)] - dff[1][ma]) > 3.5:
             o -= 1
-            ma = nearest_value(dff[0], dff[1], x[max_y_arg], min_y)
+            ma = nearest_value(dff[0], dff[1], x[np.argmax(y)], np.min(y))
             break
         o -= 1
-        ma = nearest_value(dff[0], dff[1], x[max_y_arg], min_y)
+        ma = nearest_value(dff[0], dff[1], x[np.argmax(y)], np.min(y))
 
     rad, x_r, y_r = radius(dff[0][ma], dff[1][ma], dff[0][ma + o], dff[1][ma + o], dff[0][ma - o], dff[1][ma - o])
+    k = 0
+    while rad > avr_rad:
+        k+=1
+        ma -= 10
+        rad, x_r, y_r = radius(dff[0][ma], dff[1][ma], dff[0][ma + o], dff[1][ma + o], dff[0][ma - o], dff[1][ma - o])
+        if k > 10:
+            break
     return rad, x_r, y_r
 
 
@@ -246,22 +251,24 @@ if __name__ == "__main__":
     warnings.filterwarnings("ignore")
     lines = C_sharp_data.split('\n')
 
+
     file_path = lines[0]
 
     inp_alpha_threshold = float(lines[1].replace(',', '.'))
     inp_start_offset = int(lines[2])
     inp_refractory_period = int(lines[3])
-
+    limit_rad = float(lines[4].replace(',', '.'))
     """
     inp_alpha_threshold = 2.5
     inp_start_offset = 25
     inp_refractory_period = 10
+    limit_rad = 350
     """
 
     time, voltage = open_txt(file_path)
     # time, voltage = preprocess(file_path)
 
-    radius, x, y = circle(time, voltage)
+    radius, x, y = circle(time, voltage, limit_rad)
 
     # добавим скорости в 0 и в 4 фазу
     # phase_4_speed, phase_0_speed = 999, 999
