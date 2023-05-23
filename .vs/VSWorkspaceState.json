@@ -1,7 +1,8 @@
 {
   "ExpandedNodes": [
-    ""
+    "",
+    "\\Potentials"
   ],
-  "SelectedNode": "\\Potentials",
+  "SelectedNode": "\\Potentials\\MainWindow.xaml.cs",
   "PreviewInSolutionExplorer": false
 }

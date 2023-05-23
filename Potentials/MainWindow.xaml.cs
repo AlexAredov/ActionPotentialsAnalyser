@@ -39,9 +39,14 @@ namespace Potentials
         {
             InitializeComponent();
 
-            // Запуск на весь экран по умолчанию 
-            //Width = 1920;
-            //Height = 1080;
+            // Запуск на весь экран по умолчанию и запрет изменения размера окна
+
+            _initialHeight = this.Height;
+            _initialWidth = this.Width;
+
+            this.SizeChanged += MainWindow_SizeChanged;
+            this.StateChanged += MainWindow_StateChanged;
+
             this.WindowState = WindowState.Maximized;
 
             // добавление легенды на графики
@@ -92,6 +97,9 @@ namespace Potentials
 
         string pythonExePath = "";
         string txtFilePath = "Python_FILE_PATH.txt";
+
+        private double _initialHeight;
+        private double _initialWidth;
 
         // Объявление переменных
         string raw_filepath = "c:\\";
@@ -1043,6 +1051,29 @@ namespace Potentials
                     pythonExePath = openFileDialog.FileName;
                     File.WriteAllText(txtFilePath, pythonExePath);
                 }
+            }
+        }
+
+        // Методы для запрета изменения размера окна
+        private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (this.WindowState != WindowState.Maximized)
+            {
+                this.Height = _initialHeight;
+                this.Width = _initialWidth;
+            }
+        }
+
+        private void MainWindow_StateChanged(object sender, EventArgs e)
+        {
+            if (this.WindowState == WindowState.Maximized)
+            {
+                // Позволяем изменить размер окна
+            }
+            else
+            {
+                this.Height = _initialHeight;
+                this.Width = _initialWidth;
             }
         }
     }

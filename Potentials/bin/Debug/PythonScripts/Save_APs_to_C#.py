@@ -114,8 +114,9 @@ def preprocess(file, smooth=5):
     time, voltage = open_txt(file)
 
     time = time[::4] * 1000
-    voltage = voltage[::4] * 1000
-    voltage = gaussian_filter(voltage, smooth)
+    voltage = voltage[::4]
+    voltage = denoise_tv_chambolle((voltage * 1000), smooth)
+    voltage = gaussian_filter(voltage, 1)
 
     return time, voltage
 
