@@ -361,7 +361,7 @@ namespace Potentials
 
                 var lines = output.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
 
-                if (lines.Length < 3)
+                if (lines.Length < 5)
                 {
                     throw new Exception("Python script output is not in the expected format.");
                 }

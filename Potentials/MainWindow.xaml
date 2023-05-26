@@ -64,6 +64,7 @@
         <Label x:Name="alpha_threshold_label_Copy1" Content="float:" HorizontalAlignment="Left" Margin="1027,22,0,0" VerticalAlignment="Top"/>
         <Button x:Name="Python_file_by_hand_btn" Content="Python" HorizontalAlignment="Left" Margin="7,30,0,0" VerticalAlignment="Top" Click="Python_file_by_hand_btn_Click"/>
         <Button x:Name="ClearAllBtn" Content="Clear" HorizontalAlignment="Left" Margin="7,55,0,0" VerticalAlignment="Top" Click="ClearAllBtn_Click"/>
+        <Button x:Name="SingleFileBtn" Content="Single file" HorizontalAlignment="Left" Margin="256,4,0,0" VerticalAlignment="Top" Click="SingleFileBtn_Click"/>
     </Grid>
 
 </Window>
