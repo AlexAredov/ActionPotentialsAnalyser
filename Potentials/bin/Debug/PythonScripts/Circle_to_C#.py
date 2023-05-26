@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream:Potentials/bin/Debug/PythonScripts/Circle_to_C#.py
 # from utils import *
 # from circle import *
 """
@@ -13,17 +14,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import openpyxl
+=======
+from utils import *
+import atypic_cardio_analyzer as can
+>>>>>>> Stashed changes:Potentials/bin/Debug/PythonScripts/Table_to_C#.py
 import os
-from scipy.ndimage import gaussian_filter
-from io import StringIO
-from skimage.restoration import denoise_tv_chambolle
-from math import sqrt
-from itertools import islice
-from openpyxl.utils import get_column_letter
 import sys
 import shutil
 import warnings
 import math
+<<<<<<< Updated upstream:Potentials/bin/Debug/PythonScripts/Circle_to_C#.py
 import dask.dataframe as dd
 
 
@@ -305,3 +305,51 @@ plot_radiuses(action_potentials, time, voltage)
 destination = f"tables/{file.replace('.txt', '').replace('source/', '')}.xlsx"
 save_aps_to_xlsx(destination, action_potentials, time, voltage)
 """
+=======
+from concurrent.futures import ProcessPoolExecutor
+
+C_sharp_data = sys.argv[1]
+# C_sharp_data = "D:/programming/projects/py/source/long_sample_data2019.txt"
+
+lines = C_sharp_data.split('\n')
+destination = lines[0]
+file_path = lines[1]
+
+inp_alpha_threshold = float(lines[2].replace(',', '.'))
+inp_start_offset = int(lines[3])
+inp_refractory_period = int(lines[4])
+limit_rad = float(lines[5].replace(',', '.'))
+"""
+file_path = C_sharp_data
+inp_alpha_threshold = 0.9
+inp_start_offset = 0
+inp_refractory_period = 280
+limit_rad = 250
+destination = "D:/programming/projects/2019long.xlsx"
+"""
+warnings.filterwarnings("ignore")
+
+phase_4_speed_list = []
+phase_0_speed_list = []
+num_of_APs = []
+radius_list = []
+
+# time, voltage = open_txt(file_path)
+time, voltage = can.preprocess(file_path)
+
+# Резка ПД
+action_potentials = can.find_action_potentials(time, voltage, alpha=inp_alpha_threshold,
+                                            refractory_period=inp_refractory_period, offset=inp_start_offset)
+
+# Сохранение в табличку
+try:
+    can.save_aps_to_xlsx(destination, action_potentials, time, voltage)
+    print("true")
+    print("0")
+
+except Exception as e:
+    print("false")
+    print(f"{type(e).__name__}: {str(e)}")
+
+# ----------------------------------------------------------------------------------------------
+>>>>>>> Stashed changes:Potentials/bin/Debug/PythonScripts/Table_to_C#.py

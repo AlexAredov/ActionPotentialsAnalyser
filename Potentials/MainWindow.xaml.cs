@@ -37,12 +37,24 @@ namespace Potentials
         {
             InitializeComponent();
 
+<<<<<<< Updated upstream
             // Запуск на весь экран по умолчанию 
             //Width = 1920;
             //Height = 1080;
             this.WindowState = WindowState.Maximized;
 
             // добавление легенды на график 1 ПД и всех ПД
+=======
+            // Запуск на весь экран по умолчанию и запрет изменения размера окна
+
+            _initialHeight = this.Height;
+            _initialWidth = this.Width;
+
+            this.SizeChanged += MainWindow_SizeChanged;
+            this.StateChanged += MainWindow_StateChanged;
+
+            // добавление легенды на графики
+>>>>>>> Stashed changes
             One_AP_Plot.Plot.Legend();
             All_AP_Plot.Plot.Legend();
 
@@ -109,9 +121,16 @@ namespace Potentials
         double phase_0_speed = 0;
         double phase_4_speed = 0;
 
+<<<<<<< Updated upstream
         double alpha_threshold = 2.5;
         int start_offset = 25;
         int refractory_period = 10;
+=======
+        double alpha_threshold = 2;
+        int start_offset = 30;
+        int refractory_period = 280;
+        double limit_radius = 250;
+>>>>>>> Stashed changes
 
         bool check = false;
         bool Params = false;
