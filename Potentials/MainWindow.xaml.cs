@@ -107,6 +107,7 @@ namespace Potentials
         string ComboPath_with_params = "";
         string savedFilePath = "";
         string bebra = "";
+        string save_error = "";
         string raw_time = "";
 
         double[][] intervals;
@@ -132,7 +133,7 @@ namespace Potentials
         int refractory_period = 280;
         double limit_radius = 250;
 
-        bool check = false;
+        bool check_ForFirstOpen = false;
         bool Params = false;
 
         // выбрать файлик
@@ -144,7 +145,7 @@ namespace Potentials
             // настройка параметров диалогового окна
             openFileDialog.Filter = "Text files (*.txt)|*.txt|All files (*.*)|*.*";
 
-            if (!check)
+            if (!check_ForFirstOpen)
             {
                 openFileDialog.InitialDirectory = raw_filepath;
             }
@@ -181,7 +182,7 @@ namespace Potentials
                     // Код аналогичный UpdateBtn_Click ---
 
                     // Блокируем все от шаловливых ручек пользователя
-                    Window_Block_All();
+                    Window_Block_All_Btns();
 
                     // Добро пожаловать в питон
                     await RunLongOperationAsync();
@@ -189,15 +190,10 @@ namespace Potentials
                     // сохранение пути к выбранному файлу в переменной raw_filepath и "/" заменяем "\" на "/"
                     FileNameTextBox.Text = System.IO.Path.GetFileName(raw_filepath); // извлекаем имя файла;
 
-                    // Разблокируем кнопочки
-                    SaveAP_Btn.IsEnabled = true;
-                    FindAPBtn.IsEnabled = true;
-                    FindAP_by_number_Btn.IsEnabled = true;
-                    UpdateBtn.IsEnabled = true;
-                    Python_file_by_hand_btn.IsEnabled = true;
-
-                    // Кнопка устарела
-                    //PlotAllBtn.IsEnabled = true;
+                    // Разблокируем ВСЕ кнопочки
+                    Window_UnBlock_All_Btns();
+                    // Блочим кнопку питона, она только для бананусов
+                    Python_file_by_hand_btn.IsEnabled = false;
 
                     // Строим все графики, кроме одиночного ПД
                     await PlotAllAsync();
@@ -288,7 +284,7 @@ namespace Potentials
                 radius_array = pythonData.Item6;
                 x_y_array = pythonData.Item7;
 
-                check = true;
+                check_ForFirstOpen = true;
             });
         }
 
@@ -471,7 +467,7 @@ namespace Potentials
 
         private async Task ProcessFileAsync(string filePath)
         {
-            var data = await Task.Run(() => Backend.ReadFileData(filePath));
+            var data = await Task.Run(() => Backend.ReadFileData_ForAllPlot(filePath));
 
             // Построение графика
             All_AP_Plot.Plot.AddScatterLines(data.Times.ToArray(), data.Potentials.ToArray(), lineWidth: 5, color: System.Drawing.Color.Black);
@@ -633,7 +629,6 @@ namespace Potentials
 
                     // добавление горизорнтальной полоски Овершут
                     One_AP_Plot.Plot.AddHorizontalLine(0, color: System.Drawing.Color.Gray, style: LineStyle.Dash);
-                    //All_AP_Plot.Plot.AddHorizontalLine(0, color: System.Drawing.Color.Gray, style: LineStyle.Dash);
 
                     One_AP_Plot.Plot.SetAxisLimitsY(-150, 110);
 
@@ -723,7 +718,6 @@ namespace Potentials
 
                     // добавление горизорнтальной полоски Овершут
                     One_AP_Plot.Plot.AddHorizontalLine(0, color: System.Drawing.Color.Gray, style: LineStyle.Dash);
-                    //All_AP_Plot.Plot.AddHorizontalLine(0, color: System.Drawing.Color.Gray, style: LineStyle.Dash);
 
                     One_AP_Plot.Plot.SetAxisLimitsY(-90, 40);
 
@@ -818,38 +812,90 @@ namespace Potentials
         
 
         private async void SaveAP_Btn_Click(object sender, RoutedEventArgs e)
-        {
-            savedFilePath = Backend.SaveFileAndGetPath();
-            string ComboPath = savedFilePath + "\n" + raw_filepath;
-
-            // Работу с TextBox закинем в основной поток от греха подальше
-            await Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+        {          
+            // !! Если пользователь хочет сохранить в табличку файл, который он еще не открыл
+            if (Path.GetFileName(raw_filepath) == "")
             {
-                // Проверим, не сломал ли пользователь параметры
-                Params = double.TryParse(alpha_threshold_TextBox.Text.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out alpha_threshold) & int.TryParse(start_offset_TextBox.Text.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out start_offset) & int.TryParse(refractory_period_TextBox.Text.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out refractory_period) & double.TryParse(limit_radius_TextBox.Text.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out limit_radius);
+                // создание диалогового окна выбора файла
+                OpenFileDialog openFileDialog = new OpenFileDialog();
 
-            }));
+                // настройка параметров диалогового окна
+                openFileDialog.Filter = "Text files (*.txt)|*.txt|All files (*.*)|*.*";
 
-            ComboPath_with_params = ComboPath + "\n" + alpha_threshold.ToString() + "\n" + start_offset.ToString() + "\n" + refractory_period.ToString() +"\n" + limit_radius.ToString();
-
-            if (Params)
-            {
-                alpha_threshold = Math.Round(alpha_threshold, 3);
-
-                if (!string.IsNullOrEmpty(savedFilePath))
+                if (!check_ForFirstOpen)
                 {
-                    // Лезем в питон сохранять все в табличку
-                    await RunLongSaveAsync();
-                    if (bebra == "true") { MessageBox.Show($"File saved successfully to\r\n{savedFilePath}"); }
+                    openFileDialog.InitialDirectory = raw_filepath;
                 }
                 else
                 {
-                    MessageBox.Show("The save operation was canceled.");
+                    try
+                    {
+                        openFileDialog.InitialDirectory = System.IO.Path.GetDirectoryName(raw_filepath);
+                    }
+                    catch (Exception)
+                    {
+                        openFileDialog.InitialDirectory = "c:\\";
+                    }
                 }
+
+                // отображение диалогового окна
+                if (openFileDialog.ShowDialog() == true)
+                {
+                    raw_filepath = openFileDialog.FileName;
+
+                    FileNameTextBox.Text = System.IO.Path.GetFileName(raw_filepath); // извлекаем имя файла;
+
+                    // Т.к. уже выбрали файл, то при вызове этой же функции, этот if будет пропущен
+                    SaveAP_Btn_Click(sender, e);
+                }
+
             }
+            // Обычное сохранение после просмотра информации о файле и графиков (!как было раньше!)
             else
             {
-                MessageBox.Show("Check next inputs:\nalpha-threshold\nstart-offset\nrefractory-period", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                // Тут что-то не так
+                bool ihatenigg = false;
+                OpenfileBtn.IsEnabled = ihatenigg;
+                UpdateBtn.IsEnabled = ihatenigg;
+
+                savedFilePath = Backend.SaveFileAndGetPath(raw_filepath);
+                string ComboPath = savedFilePath + "\n" + raw_filepath;
+
+                // Работу с TextBox закинем в основной поток от греха подальше
+                await Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    // Проверим, не сломал ли пользователь параметры
+                    Params = double.TryParse(alpha_threshold_TextBox.Text.Trim(), out alpha_threshold) & int.TryParse(start_offset_TextBox.Text.Trim(), out start_offset) & int.TryParse(refractory_period_TextBox.Text.Trim(), out refractory_period) & double.TryParse(limit_radius_TextBox.Text.Trim(), out limit_radius);
+
+                }));
+
+                ComboPath_with_params = ComboPath + "\n" + alpha_threshold.ToString() + "\n" + start_offset.ToString() + "\n" + refractory_period.ToString() +"\n" + limit_radius.ToString();
+                
+                // Теперь как надо
+                ihatenigg = true;
+
+                if (Params)
+                {
+                    alpha_threshold = Math.Round(alpha_threshold, 3);
+
+                    if (!string.IsNullOrEmpty(savedFilePath))
+                    {
+                        // Лезем в питон сохранять все в табличку
+                        await RunLongSaveAsync();
+                        if (bebra == "true") { MessageBox.Show($"File saved successfully to\r\n{savedFilePath}"); }
+                        else if (bebra == "false") { MessageBox.Show($"An error occurred while saving. Maybe you have a *.xlsx table open that you are trying to overwrite.\r\n{save_error}", "Error", MessageBoxButton.OK, MessageBoxImage.Error); }
+                    }
+                    else
+                    {
+                        MessageBox.Show("The save operation was canceled.");
+                    }
+                }
+                else
+                {
+                    MessageBox.Show("Check next inputs:\nalpha-threshold\nstart-offset\nrefractory-period", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+                OpenfileBtn.IsEnabled = ihatenigg;
+                UpdateBtn.IsEnabled = ihatenigg;
             }
         }
         
@@ -862,6 +908,10 @@ namespace Potentials
                 // Здесь выполняется сохранение в табличку
                 string scriptPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PythonScripts", "Table_to_C#.py");
                 bebra = Backend.RunPythonScript_Save_xlxs(pythonExePath, scriptPath, ComboPath_with_params);
+
+                string[] lines = bebra.Split('\n');
+                bebra = lines[0].TrimEnd('\r');
+                save_error = lines[1].TrimEnd('\r');
             });
         }
 
@@ -883,6 +933,9 @@ namespace Potentials
                 radiobtn.IsEnabled = false;
             }
 
+            SaveAP_Btn.IsEnabled = true;
+            Experiment_duration_label.IsEnabled = true;
+
             if (File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, txtFilePath)))
             {
                 pythonExePath = File.ReadAllText(txtFilePath);
@@ -893,7 +946,9 @@ namespace Potentials
                     window_size_TextBox.IsEnabled = true;
                     TimeTextBox.IsEnabled = true;
                     NumberAP_TextBox.IsEnabled = true;
-                    Python_file_by_hand_btn.IsEnabled = true;
+                    
+                    // В новой версии без Banana mode нельзя поменять выставленный вначале питон.ехе
+                    //Python_file_by_hand_btn.IsEnabled = true;
                     foreach (var radiobtn in Backend.FindVisualChildren<RadioButton>(this))
                     {
                         radiobtn.IsEnabled = true;
@@ -947,14 +1002,18 @@ namespace Potentials
         }
         
 
-        private void Window_Block_All()
+        private void Window_Block_All_Btns()
         {
             foreach (var button in Backend.FindVisualChildren<Button>(this))
             {
-                if (button.Name != "OpenfileBtn")
-                {
-                    button.IsEnabled = false;
-                }
+                button.IsEnabled = false;
+            }
+        }
+        private void Window_UnBlock_All_Btns()
+        {
+            foreach (var button in Backend.FindVisualChildren<Button>(this))
+            {
+                button.IsEnabled = true;
             }
         }
 
@@ -975,6 +1034,7 @@ namespace Potentials
             refractory_period_TextBox.IsEnabled = false;
             limit_radius_TextBox.IsEnabled = false;
             UpdateBtn.IsEnabled = false;
+            Python_file_by_hand_btn.IsEnabled = false;
 
             alpha_threshold_TextBox.Text = alpha_threshold.ToString();
             start_offset_TextBox.Text = start_offset.ToString();
@@ -987,7 +1047,7 @@ namespace Potentials
         private async void UpdateBtn_Click(object sender, RoutedEventArgs e)
         {
             // Блокируем все от шаловливых ручек пользователя
-            Window_Block_All();
+            Window_Block_All_Btns();
 
             // Добро пожаловать в питон
             await RunLongOperationAsync();
@@ -996,11 +1056,9 @@ namespace Potentials
             FileNameTextBox.Text = System.IO.Path.GetFileName(raw_filepath); // извлекаем имя файла;
 
             // Разблокируем кнопочки
-            SaveAP_Btn.IsEnabled = true;
-            FindAPBtn.IsEnabled = true;
-            FindAP_by_number_Btn.IsEnabled = true;
-            UpdateBtn.IsEnabled = true;
-            Python_file_by_hand_btn.IsEnabled = true;
+            Window_UnBlock_All_Btns();
+            Python_file_by_hand_btn.IsEnabled=false;
+            
 
             // Кнопка устарела
             //PlotAllBtn.IsEnabled = true;
@@ -1075,6 +1133,45 @@ namespace Potentials
                 this.Height = _initialHeight;
                 this.Width = _initialWidth;
             }
+        }
+
+        private void ClearAllBtn_Click(object sender, RoutedEventArgs e)
+        {
+            One_AP_Plot.Plot.Clear();
+            All_AP_Plot.Plot.Clear();
+            RdV0_Plot.Plot.Clear();
+            RdV4_Plot.Plot.Clear();
+            dR_Plot.Plot.Clear();
+
+            One_AP_Plot.Refresh();
+            All_AP_Plot.Refresh(); ;
+            RdV0_Plot.Refresh();
+            RdV4_Plot.Refresh();
+            dR_Plot.Refresh();
+
+            raw_filepath = "c:\\";
+            separating_path = "";
+            ComboPath_with_params = "";
+            savedFilePath = "";
+            bebra = "";
+            save_error = "";
+            raw_time = "";
+
+            time_ms = 0;
+            window_size = 3;
+            targetFile = "";
+            start_time = 0;
+            end_time = 0;
+
+            current_radius = 0;
+            phase_0_speed = 0;
+            phase_4_speed = 0;
+
+            FileNameTextBox.Text = "Here will be name of opened file";
+            TimeTextBox.Text = "00:00:00";
+            NumberAP_TextBox.Text = "1";
+
+            Window_Loaded(sender, e);
         }
     }
 }

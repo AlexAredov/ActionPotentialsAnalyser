@@ -61,44 +61,6 @@ def open_txt(file):
         return time, voltage
 
 
-
-def save_aps_to_xlsx(destination, aps, time, voltage):
-    """
-    Сохраняет информацию о ПД в .xlsx таблицу.
-
-    Аргументы:
-        destination (str): Путь к папке для сохранения.
-        aps (list): Список словарей, содержащих ключи 'pre_start' и 'end'.
-        time (np.ndarray): 1D массив numpy содержащий значения времени.
-        voltage (np.ndarray): 1D массив numpy содержащий значения напряжения.
-
-    Возвращает:
-        None
-    """
-    data = []
-
-    for number, ap in enumerate(aps):
-        phase_4_speed, phase_0_speed = find_voltage_speed(ap, time, voltage)
-
-        current_ap_time = time[ap['pre_start']:ap['end']]
-        current_ap_voltage = voltage[ap['pre_start']:ap['end']]
-
-        radius, _, _ = circle(current_ap_time, current_ap_voltage)
-
-        row = {
-            "Номер ПД": number + 1,
-            "Начало": f"{current_ap_time[0]:.2f}",
-            "Конец": f"{current_ap_time[-1]:.2f}",
-            "Радиус": round(radius, 2),
-            "dV/dt4": phase_4_speed,
-            "dV/dt0": phase_0_speed
-        }
-        data.append(row)
-
-    df = pd.DataFrame(data)
-    df.to_excel(destination, index=False, engine='openpyxl')
-
-
 def preprocess(file, smooth=5):
     """
     Предварительная обработка данных из файла.
@@ -115,7 +77,7 @@ def preprocess(file, smooth=5):
 
     time = time[::4] * 1000
     voltage = voltage[::4] * 1000
-    #voltage = denoise_tv_chambolle((voltage * 1000), smooth)
+    # voltage = denoise_tv_chambolle((voltage * 1000), smooth)
     voltage = gaussian_filter(voltage, smooth)
 
     return time, voltage
@@ -147,7 +109,8 @@ def find_action_potentials(time, voltage, alpha_threshold=25, refractory_period=
     candidate_phase_0_start_indices = np.where(voltage_derivative > alpha_threshold)[0]
     diff_candidates = np.diff(candidate_phase_0_start_indices)
 
-    phase_0_start_indices = np.insert(candidate_phase_0_start_indices[1:][diff_candidates > refractory_period], 0, candidate_phase_0_start_indices[0])
+    phase_0_start_indices = np.insert(candidate_phase_0_start_indices[1:][diff_candidates > refractory_period], 0,
+                                      candidate_phase_0_start_indices[0])
 
     action_potentials = []
     for i, start_index in enumerate(phase_0_start_indices):
@@ -252,14 +215,18 @@ def circle(time, voltage, avr_rad):
 
     rad, x_r, y_r = radius(dff[0][ma], dff[1][ma], dff[0][ma + o], dff[1][ma + o], dff[0][ma - o], dff[1][ma - o])
     k = 0
-    while rad > avr_rad:
-        k+=1
-        ma -= 10
-        rad, x_r, y_r = radius(dff[0][ma], dff[1][ma], dff[0][ma + o], dff[1][ma + o], dff[0][ma - o], dff[1][ma - o])
-        if k > 10:
-            break
-    return rad, x_r, y_r
+    try:
+        while rad > avr_rad:
+            k += 1
+            ma -= 10
+            rad_new, x_r_new, y_r_new = radius(dff[0][ma], dff[1][ma], dff[0][ma + o], dff[1][ma + o], dff[0][ma - o],
+                                               dff[1][ma - o])
+            if k > 10000:
+                break
+        return rad_new, x_r_new, y_r_new
 
+    except Exception as e:
+        return rad, x_r, y_r
 
 
 def save_aps_to_txt(destination, aps, time, voltage):
@@ -311,27 +278,63 @@ def replace_nan_with_nearest(value_list, index):
         return 0
 
 
-def process_ap(args):
-    number, ap, time, voltage = args
-    phase_4_speed, phase_0_speed = find_voltage_speed(ap, time, voltage)
-    if math.isnan(phase_4_speed):
-        phase_4_speed = replace_nan_with_nearest(phase_4_speed_list, number)
-    if math.isnan(phase_0_speed):
-        phase_0_speed = replace_nan_with_nearest(phase_0_speed_list, number)
-    phase_4_speed = round(phase_4_speed, 3)
-    phase_0_speed = round(phase_0_speed, 3)
-    current_ap_time = time[ap['pre_start']:ap['end']]
-    current_ap_voltage = voltage[ap['pre_start']:ap['end']]
-    radius, _, _ = circle(current_ap_time, current_ap_voltage)
-    if math.isnan(radius):
-        radius = replace_nan_with_nearest(radius_list, number)
-    radius = round(radius, 3)
-    return phase_4_speed, phase_0_speed, radius
+def save_aps_to_xlsx(destination, aps, time, voltage, limit_rad):
+    """
+    Сохраняет информацию о ПД в .xlsx таблицу.
+
+    Аргументы:
+        destination (str): Путь к папке для сохранения.
+        aps (list): Список словарей, содержащих ключи 'pre_start' и 'end'.
+        time (np.ndarray): 1D массив numpy содержащий значения времени.
+        voltage (np.ndarray): 1D массив numpy содержащий значения напряжения.
+
+    Возвращает:
+        None
+    """
+    data = []
+    radius_list_local = []
+    phase_4_speed_list_local = []
+    phase_0_speed_list_local = []
+
+    for number, ap in enumerate(aps):
+        phase_4_speed, phase_0_speed = find_voltage_speed(ap, time, voltage)
+
+        if math.isnan(phase_4_speed):
+            phase_4_speed = replace_nan_with_nearest(phase_4_speed_list_local, number)
+        if math.isnan(phase_0_speed):
+            phase_0_speed = replace_nan_with_nearest(phase_0_speed_list_local, number)
+
+        current_ap_time = time[ap['pre_start']:ap['end']]
+        current_ap_voltage = voltage[ap['pre_start']:ap['end']]
+
+        radius, x, y = circle(current_ap_time, current_ap_voltage, limit_rad)
+
+        if math.isnan(radius):
+            radius = replace_nan_with_nearest(radius_list_local, number)
+
+        radius_list_local.append(radius)
+
+        # radius, _, _ = circle(current_ap_time, current_ap_voltage)
+
+        row = {
+            "Номер ПД": number + 1,
+            "Начало": f"{current_ap_time[0]:.2f}",
+            "Конец": f"{current_ap_time[-1]:.2f}",
+            "Радиус": round(radius, 2),
+            "dV/dt4": round(phase_4_speed, 3),
+            "dV/dt0": round(phase_0_speed, 3)
+        }
+        data.append(row)
+
+    df = pd.DataFrame(data)
+    df.to_excel(destination, index=False, engine='openpyxl')
+
 
 # ----------------------------------------------------------------------------------------------
 
 if __name__ == "__main__":
     C_sharp_data = sys.argv[1]
+    # C_sharp_data = "D:/programming/projects/py/source/long_sample_data2019.txt"
 
     lines = C_sharp_data.split('\n')
     destination = lines[0]
@@ -340,7 +343,15 @@ if __name__ == "__main__":
     inp_alpha_threshold = float(lines[2].replace(',', '.'))
     inp_start_offset = int(lines[3])
     inp_refractory_period = int(lines[4])
-
+    limit_rad = float(lines[5].replace(',', '.'))
+    """
+    file_path = C_sharp_data
+    inp_alpha_threshold = 0.9
+    inp_start_offset = 0
+    inp_refractory_period = 280
+    limit_rad = 250
+    destination = "D:/programming/projects/2019long.xlsx"
+    """
     warnings.filterwarnings("ignore")
 
     phase_4_speed_list = []
@@ -352,11 +363,17 @@ if __name__ == "__main__":
     time, voltage = preprocess(file_path)
 
     # Резка ПД
-    action_potentials = find_action_potentials(time, voltage, alpha_threshold=inp_alpha_threshold, start_offset=inp_start_offset, refractory_period=inp_refractory_period)
+    action_potentials = find_action_potentials(time, voltage, alpha_threshold=inp_alpha_threshold,
+                                               start_offset=inp_start_offset, refractory_period=inp_refractory_period)
 
     # Сохранение в табличку
-    save_aps_to_xlsx(destination, action_potentials, time, voltage)
-    print("true")
+    try:
+        save_aps_to_xlsx(destination, action_potentials, time, voltage, limit_rad)
+        print("true")
+        print("0")
+
+    except Exception as e:
+        print("false")
+        print(f"{type(e).__name__}: {str(e)}")
 
 # ----------------------------------------------------------------------------------------------
-

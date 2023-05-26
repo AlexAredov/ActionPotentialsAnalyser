@@ -29,7 +29,7 @@
                 </TransformGroup>
             </Button.RenderTransform>
         </Button>
-        <Button x:Name="OpenfileBtn" Content="Open flie" HorizontalAlignment="Left" Margin="7,5,0,0" VerticalAlignment="Top" Click="OpenfileBtn_Click"/>
+        <Button x:Name="OpenfileBtn" Content="Open file" HorizontalAlignment="Left" Margin="7,5,0,0" VerticalAlignment="Top" Click="OpenfileBtn_Click"/>
         <TextBox x:Name="FileNameTextBox" HorizontalAlignment="Left" Margin="71,5,0,0" TextWrapping="Wrap" Text="Here will be name of opened file" VerticalAlignment="Top" Width="180" IsEnabled="False"/>
         <Button x:Name="UpdateStatisticBtn" Content="Update Statistic" HorizontalAlignment="Left" Margin="839,61,0,0" VerticalAlignment="Top" Click="PlotAllBtn_Click" IsEnabled="False"/>
         <TextBox x:Name="TimeTextBox" HorizontalAlignment="Left" Margin="419,26,0,0" TextWrapping="Wrap" Text="00:00:00" VerticalAlignment="Top" Width="120"/>
@@ -63,6 +63,7 @@
         <TextBox x:Name="limit_radius_TextBox" HorizontalAlignment="Left" Margin="1063,26,0,0" TextWrapping="Wrap" Text="2.5" VerticalAlignment="Top" Width="40" IsEnabled="False"/>
         <Label x:Name="alpha_threshold_label_Copy1" Content="float:" HorizontalAlignment="Left" Margin="1027,22,0,0" VerticalAlignment="Top"/>
         <Button x:Name="Python_file_by_hand_btn" Content="Python" HorizontalAlignment="Left" Margin="7,30,0,0" VerticalAlignment="Top" Click="Python_file_by_hand_btn_Click"/>
+        <Button x:Name="ClearAllBtn" Content="Clear" HorizontalAlignment="Left" Margin="7,55,0,0" VerticalAlignment="Top" Click="ClearAllBtn_Click"/>
     </Grid>
 
 </Window>

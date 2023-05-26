@@ -61,7 +61,6 @@ def open_txt(file):
         return time, voltage
 
 
-
 def save_aps_to_xlsx(destination, aps, time, voltage):
     """
     Сохраняет информацию о ПД в .xlsx таблицу.
@@ -147,7 +146,8 @@ def find_action_potentials(time, voltage, alpha_threshold=25, refractory_period=
     candidate_phase_0_start_indices = np.where(voltage_derivative > alpha_threshold)[0]
     diff_candidates = np.diff(candidate_phase_0_start_indices)
 
-    phase_0_start_indices = np.insert(candidate_phase_0_start_indices[1:][diff_candidates > refractory_period], 0, candidate_phase_0_start_indices[0])
+    phase_0_start_indices = np.insert(candidate_phase_0_start_indices[1:][diff_candidates > refractory_period], 0,
+                                      candidate_phase_0_start_indices[0])
 
     action_potentials = []
     for i, start_index in enumerate(phase_0_start_indices):
@@ -252,14 +252,18 @@ def circle(time, voltage, avr_rad):
 
     rad, x_r, y_r = radius(dff[0][ma], dff[1][ma], dff[0][ma + o], dff[1][ma + o], dff[0][ma - o], dff[1][ma - o])
     k = 0
-    while rad > avr_rad:
-        k+=1
-        ma -= 10
-        rad, x_r, y_r = radius(dff[0][ma], dff[1][ma], dff[0][ma + o], dff[1][ma + o], dff[0][ma - o], dff[1][ma - o])
-        if k > 10:
-            break
-    return rad, x_r, y_r
+    try:
+        while rad > avr_rad:
+            k += 1
+            ma -= 10
+            rad_new, x_r_new, y_r_new = radius(dff[0][ma], dff[1][ma], dff[0][ma + o], dff[1][ma + o], dff[0][ma - o],
+                                               dff[1][ma - o])
+            if k > 10000:
+                break
+        return rad_new, x_r_new, y_r_new
 
+    except Exception as e:
+        return rad, x_r, y_r
 
 
 def save_aps_to_txt(destination, aps, time, voltage):
@@ -357,7 +361,8 @@ if __name__ == "__main__":
                                                                            '/')  # добавляем separating_folder в конец
 
     time, voltage = preprocess(file)
-    action_potentials = find_action_potentials(time, voltage, alpha_threshold=inp_alpha_threshold, start_offset=inp_start_offset, refractory_period=inp_refractory_period)
+    action_potentials = find_action_potentials(time, voltage, alpha_threshold=inp_alpha_threshold,
+                                               start_offset=inp_start_offset, refractory_period=inp_refractory_period)
 
     # <
     # Сохраняем каждые ПД в папку и получаем временные интервалы
@@ -418,5 +423,3 @@ if __name__ == "__main__":
     print(num_of_APs)
     print(radius_list)
     print(x_y_list)
-
-

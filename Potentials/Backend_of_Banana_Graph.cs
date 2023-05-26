@@ -27,6 +27,8 @@ using System.Drawing;
 using System.Windows.Interop;
 using Path = System.IO.Path;
 
+using System.Collections.Concurrent;
+
 namespace Potentials
 {
     internal class Backend
@@ -88,33 +90,48 @@ namespace Potentials
             }
         }
 
-        public static (List<double> Times, List<double> Potentials) ReadFileData(string filePath)
+        public static (List<double> Times, List<double> Potentials) ReadFileData_ForAllPlot(string filePath)
         {
-            List<double> times = new List<double>();
-            List<double> potentials = new List<double>();
             int lineCount = 0;
-
-            foreach (var line in File.ReadLines(filePath))
+            using (var reader = new StreamReader(filePath))
             {
-                // читаем каждую третью строку
-                if (lineCount % 16 == 0)
+                while (reader.ReadLine() != null)
                 {
-                    var parts = line.Split('\t');
-                    if (parts.Length == 2)
+                    lineCount++;
+                }
+            }
+
+            int estimatedSize = lineCount / 20;
+            List<double> times = new List<double>(estimatedSize);
+            List<double> potentials = new List<double>(estimatedSize);
+
+            lineCount = 0;
+            using (var reader = new StreamReader(filePath))
+            {
+                string line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    // read every 20 lines
+                    if (lineCount % 20 == 0)
                     {
-                        if (double.TryParse(parts[0], NumberStyles.Any, CultureInfo.InvariantCulture, out double time) &&
-                            double.TryParse(parts[1], NumberStyles.Any, CultureInfo.InvariantCulture, out double potential))
+                        var parts = line.Split('\t');
+                        if (parts.Length == 2)
                         {
-                            times.Add(time);
-                            potentials.Add(potential);
+                            if (double.TryParse(parts[0], NumberStyles.Any, CultureInfo.InvariantCulture, out double time) &&
+                                double.TryParse(parts[1], NumberStyles.Any, CultureInfo.InvariantCulture, out double potential))
+                            {
+                                times.Add(time);
+                                potentials.Add(potential);
+                            }
                         }
                     }
+                    lineCount++;
                 }
-                lineCount++;
             }
 
             return (times, potentials);
         }
+
 
         // Делаем кортеж для потсроения доверительных интервалов с учетом windowSize
         public static Tuple<double[], double[], double[]> ConfidenceIntervals_same(double[] num_of_APs, double[] phase_0_4_speed_or_Radius_array, int windowSize)
@@ -446,11 +463,11 @@ namespace Potentials
         }
 
         // получить путь
-        public static string SaveFileAndGetPath()
+        public static string SaveFileAndGetPath(string raw_filepath_local)
         {
             SaveFileDialog saveFileDialog = new SaveFileDialog();
             saveFileDialog.Filter = "Excel Files (*.xlsx)|*.xlsx";
-            saveFileDialog.FileName = "NewExcelFile";
+            saveFileDialog.FileName = Path.GetFileNameWithoutExtension(raw_filepath_local);
             saveFileDialog.DefaultExt = ".xlsx";
 
             bool? result = saveFileDialog.ShowDialog();
