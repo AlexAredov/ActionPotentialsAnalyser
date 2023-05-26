@@ -1,7 +1,14 @@
+# from utils import *
+# from circle import *
 """
-Библиотека для анализа потенциалов действий кардиомиоцитов
-"""
+file = "2.txt"
+time, voltage = preprocess(file)
+radius, x, y = circle(time, voltage)
 
+plt.plot(time, voltage)
+plt.gca().add_patch(plt.Circle((x, y), radius, color='lightblue', alpha=0.5))
+plt.show()
+"""
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -267,7 +274,7 @@ def circle(time, voltage, avr_rad):
 
     except Exception as e:
         return rad, x_r, y_r
-
+    
 
 def save_aps_to_txt(destination, aps, time, voltage):
     """
@@ -337,92 +344,85 @@ def process_ap(args):
 
 
 # ----------------------------------------------------------------------------------------------
-
-
 if __name__ == "__main__":
     C_sharp_data = sys.argv[1]
-    # C_sharp_data = "D:/programming/projects/py/potentials/source/ten.txt"
-    lines = C_sharp_data.split('\n')
+    # C_sharp_data = "D:/programming/projects/py/potentials/source/separated_APs/1.txt"
     warnings.filterwarnings("ignore")
+    lines = C_sharp_data.split('\n')
 
-    file = lines[0]
+    file_path = lines[0]
+
     inp_alpha_threshold = float(lines[1].replace(',', '.'))
     inp_start_offset = int(lines[2])
     inp_refractory_period = int(lines[3])
     limit_rad = float(lines[4].replace(',', '.'))
+
+
     """
-    file = C_sharp_data
     inp_alpha_threshold = 2.5
     inp_start_offset = 25
     inp_refractory_period = 10
     limit_rad = 350
     """
-    separating_folder = "separated_APs"
 
-    file_folder = os.path.dirname(file)  # получаем путь до папки перед файлом
-    separating_path = os.path.join(file_folder, separating_folder).replace('\\',
-                                                                           '/')  # добавляем separating_folder в конец
+    time, voltage = open_txt(file_path)
+    # time, voltage = preprocess(file_path)
 
-    time, voltage = preprocess(file)
-    action_potentials = find_action_potentials(time, voltage, alpha_threshold=inp_alpha_threshold,
-                                               start_offset=inp_start_offset, refractory_period=inp_refractory_period)
+    radius, x, y = circle(time, voltage, limit_rad)
 
-    # <
-    # Сохраняем каждые ПД в папку и получаем временные интервалы
-    intervals = save_aps_to_txt(separating_path, action_potentials, time, voltage)
-    # >
-    phase_4_speed_list = []
-    phase_0_speed_list = []
-    num_of_APs = []
-    radius_list = []
-    x_y_list = []
-
-    x_list = []
-    y_list = []
-
-    for number, ap in enumerate(action_potentials):
-        # <
+    # добавим скорости в 0 и в 4 фазу
+    # phase_4_speed, phase_0_speed = 999, 999
+    aps = find_action_potentials(time, voltage, alpha_threshold=inp_alpha_threshold, start_offset=inp_start_offset, refractory_period=inp_refractory_period)
+    phase_4_speed, phase_0_speed = 999, 999
+    for number, ap in enumerate(aps):
         phase_4_speed, phase_0_speed = find_voltage_speed(ap, time, voltage)
-        # >
-        # <
         if math.isnan(phase_4_speed):
-            phase_4_speed = replace_nan_with_nearest(phase_4_speed_list, number)
+            phase_4_speed = 0
         if math.isnan(phase_0_speed):
-            phase_0_speed = replace_nan_with_nearest(phase_0_speed_list, number)
-
+            phase_0_speed = 0
         phase_4_speed = round(phase_4_speed, 3)
         phase_0_speed = round(phase_0_speed, 3)
 
-        phase_4_speed_list.append(phase_4_speed)
-        phase_0_speed_list.append(phase_0_speed)
-        num_of_APs.append(number + 1)
-        # >
+    print(round(radius, 3))
+    print(round(x, 3))
+    print(round(y, 3))
+    print(phase_0_speed)
+    print(phase_4_speed)
 
-        # <
-        current_ap_time = time[ap['pre_start']:ap['end']]
-        current_ap_voltage = voltage[ap['pre_start']:ap['end']]
 
-        radius, x, y = circle(current_ap_time, current_ap_voltage, limit_rad)
-        if math.isnan(radius):
-            radius = replace_nan_with_nearest(radius_list, number)
+# ----------------------------------------------------------------------------------------------
 
-        if math.isnan(x):
-            x = replace_nan_with_nearest(radius_list, number)
+# Входные данные + резка пд
+"""
+file = "source/1.txt"
+time, voltage = preprocess(file)
+action_potentials = find_action_potentials(time, voltage, alpha_threshold=2.5, start_offset=25)
 
-        if math.isnan(y):
-            y = replace_nan_with_nearest(radius_list, number)
+# Графики
+plt.figure()
+for ap in action_potentials:
+    pre_start_index = ap['pre_start']
+    end_index = ap['end']
+    ap_time = time[pre_start_index:end_index + 1]
+    ap_voltage = voltage[pre_start_index:end_index + 1]
 
-        x_list.append(x)
-        y_list.append(y)
+    plt.plot(ap_time, ap_voltage)
 
-        radius_list.append(round(radius, 3))
-        x_y_list.append([round(x, 3), round(y, 3)])
-        # >
+plt.xlabel("Time")
+plt.ylabel("Voltage")
+plt.title("Merged Action Potentials")
+plt.show()
 
-    print(intervals)
-    print(separating_path)
-    print(phase_0_speed_list)
-    print(phase_4_speed_list)
-    print(num_of_APs)
-    print(radius_list)
-    print(x_y_list)
+for number, ap in enumerate(action_potentials):
+    plot_ap(ap, time, voltage, number + 1)
+
+plot_phase_4_speeds(action_potentials, time, voltage)
+plot_phase_0_speeds(action_potentials, time, voltage)
+
+# !!!очень долго выполняется
+plot_radiuses(action_potentials, time, voltage)
+
+# Табличка
+destination = f"tables/{file.replace('.txt', '').replace('source/', '')}.xlsx"
+save_aps_to_xlsx(destination, action_potentials, time, voltage)
+"""
