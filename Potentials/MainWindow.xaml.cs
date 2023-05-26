@@ -128,8 +128,8 @@ namespace Potentials
         double phase_0_speed = 0;
         double phase_4_speed = 0;
 
-        double alpha_threshold = 2;
-        int start_offset = 30;
+        double alpha_threshold = 0.7;
+        int start_offset = 10;
         int refractory_period = 280;
         double limit_radius = 250;
 
