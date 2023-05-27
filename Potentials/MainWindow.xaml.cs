@@ -25,6 +25,8 @@ using Newtonsoft.Json.Linq;
 using ScottPlot.Plottable;
 using System.Drawing;
 using System.Windows.Interop;
+using Path = System.IO.Path;
+using System.Text.RegularExpressions;
 
 namespace Potentials
 {
@@ -37,12 +39,17 @@ namespace Potentials
         {
             InitializeComponent();
 
-            // Запуск на весь экран по умолчанию 
-            //Width = 1920;
-            //Height = 1080;
+            // Запуск на весь экран по умолчанию и запрет изменения размера окна
+
+            _initialHeight = this.Height;
+            _initialWidth = this.Width;
+
+            this.SizeChanged += MainWindow_SizeChanged;
+            this.StateChanged += MainWindow_StateChanged;
+
             this.WindowState = WindowState.Maximized;
 
-            // добавление легенды на график 1 ПД и всех ПД
+            // добавление легенды на графики
             One_AP_Plot.Plot.Legend();
             All_AP_Plot.Plot.Legend();
 
@@ -54,7 +61,7 @@ namespace Potentials
             One_AP_Plot.Plot.Title("Cardiac Action Potential\n(SA node)");
             One_AP_Plot.Plot.XLabel("Time (mm:ss:ff)");
             One_AP_Plot.Plot.YLabel("Membrane Potential (mV)");
-            One_AP_Plot.Plot.SetAxisLimitsY(-100, 40);
+            One_AP_Plot.Plot.SetAxisLimitsY(-150, 110);
 
             All_AP_Plot.Plot.Title("Cardiac Action Potential\n(SA node)");
             All_AP_Plot.Plot.XLabel("Time (mm:ss:ff)");
@@ -83,13 +90,30 @@ namespace Potentials
             All_AP_Plot.Plot.YAxis.Color(System.Drawing.Color.Blue);
             RdV0_Plot.Plot.YAxis.Color(System.Drawing.Color.Red);
             RdV4_Plot.Plot.YAxis.Color(System.Drawing.Color.Red);
+
+            One_AP_Plot.Plot.Benchmark(enable: true);
+            All_AP_Plot.Plot.Benchmark(enable: true);
+            RdV0_Plot.Plot.Benchmark(enable: true);
+            RdV4_Plot.Plot.Benchmark(enable: true);
+            dR_Plot.Plot.Benchmark(enable: true);
         }
+
+        // УСТАРЕЛО
+        //string pythonExePath = "C:/Python39/python.exe";
+
+        string pythonExePath = "";
+        string txtFilePath = "Python_FILE_PATH.txt";
+
+        private double _initialHeight;
+        private double _initialWidth;
+
+        // Объявление переменных
         string raw_filepath = "c:\\";
-        string pythonExePath = "C:/Python39/python.exe";
         string separating_path = "";
         string ComboPath_with_params = "";
         string savedFilePath = "";
         string bebra = "";
+        string save_error = "";
         string raw_time = "";
 
         double[][] intervals;
@@ -97,6 +121,8 @@ namespace Potentials
         double[] phase_4_speed_array;
         double[] num_of_APs;
         double[] radius_array;
+        double[][] x_y_array;
+        double[][] x_y_for_offset_array;
 
         int time_ms = 0;
         int window_size = 3;
@@ -108,13 +134,20 @@ namespace Potentials
         double current_radius = 0;
         double phase_0_speed = 0;
         double phase_4_speed = 0;
+        double x_local = 0;
+        double y_local = 0;
 
-        double alpha_threshold = 2.5;
-        int start_offset = 25;
-        int refractory_period = 10;
+        double x_offset = 0;
+        double y_offset = 0;
 
-        bool check = false;
+        double alpha_threshold = 0.9;
+        int start_offset = 0;
+        int refractory_period = 280;
+        double limit_radius = 250;
+
+        bool check_ForFirstOpen = false;
         bool Params = false;
+        bool user_or_banana = false;
 
         // выбрать файлик
         private async void OpenfileBtn_Click(object sender, RoutedEventArgs e)
@@ -125,7 +158,7 @@ namespace Potentials
             // настройка параметров диалогового окна
             openFileDialog.Filter = "Text files (*.txt)|*.txt|All files (*.*)|*.*";
 
-            if (!check)
+            if (!check_ForFirstOpen)
             {
                 openFileDialog.InitialDirectory = raw_filepath;
             }
@@ -146,31 +179,44 @@ namespace Potentials
             //openFileDialog.InitialDirectory = "D:\\programming\\projects\\py\\potentials\\";
 
             // Проверим, не сломал ли пользователь параметры
-            bool Params = double.TryParse(alpha_threshold_TextBox.Text.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out alpha_threshold) & int.TryParse(start_offset_TextBox.Text.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out start_offset) & int.TryParse(refractory_period_TextBox.Text.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out refractory_period);
+            bool Params = double.TryParse(alpha_threshold_TextBox.Text.Trim().Replace('.', ','), out alpha_threshold) & int.TryParse(start_offset_TextBox.Text.Trim(), out start_offset) & int.TryParse(refractory_period_TextBox.Text.Trim(), out refractory_period) & double.TryParse(limit_radius_TextBox.Text.Trim().Replace('.', ','), out limit_radius);
 
             if (Params)
             {
                 alpha_threshold = Math.Round(alpha_threshold, 3);
+                limit_radius = Math.Round(limit_radius, 3);
 
                 // отображение диалогового окна
                 if (openFileDialog.ShowDialog() == true)
                 {
                     raw_filepath = openFileDialog.FileName;
+                    //raw_filepath = RenameRussianToLatin(raw_filepath);
+
+                    // Код аналогичный UpdateBtn_Click ---
 
                     // Блокируем все от шаловливых ручек пользователя
-                    Window_Block_All();
+                    Window_Block_All_Btns();
 
                     // Добро пожаловать в питон
                     await RunLongOperationAsync();
 
                     // сохранение пути к выбранному файлу в переменной raw_filepath и "/" заменяем "\" на "/"
                     FileNameTextBox.Text = System.IO.Path.GetFileName(raw_filepath); // извлекаем имя файла;
-                    
-                    // Разблокируем кнопочки
-                    PlotAllBtn.IsEnabled = true;
-                    SaveAP_Btn.IsEnabled = true;
-                    FindAPBtn.IsEnabled = true;
-                    FindAP_by_number_Btn.IsEnabled = true;
+
+                    // Разблокируем ВСЕ кнопочки
+                    Window_UnBlock_All_Btns();
+                    // Блочим кнопку питона, она только для бананусов
+                    Python_file_by_hand_btn.IsEnabled = false;
+
+                    // Строим все графики, кроме одиночного ПД
+                    await PlotAllAsync();
+
+                    // Конец кода аналогичного UpdateBtn_Click ---
+
+                    FindAP_by_number_Btn_Click(sender, e);
+
+                    // Кнопка устарела
+                    //PlotAllBtn.IsEnabled = true;
                 }
             }
             else
@@ -178,172 +224,117 @@ namespace Potentials
                 MessageBox.Show("Check next inputs:\nalpha-threshold\nstart-offset\nrefractory-period", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
+
+        // !!СЕЙЧАС НЕ ИСПОЛЬЗУЕТСЯ, ТРЕБУЕТ ДОРАБОТКИ!! На случай, если нам подкинули руске в пути или файле 
+        public static string RenameRussianToLatin(string path)
+        {
+            string map = "абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ";
+            string mapTo = "abvgdeejzijklmnoprstufhcchshsh'i'euaABVGDEEJZIJKLMNOPRSTUFHCCHSHSH'I'EUA";
+            char[] invalidChars = new char[] { '<', '>', '"', '/', '\\', '|', '?', '*', '\'', ' ', '-', ',' };
+
+            string newPath = "";
+
+            string[] directories = path.Split(Path.DirectorySeparatorChar);
+            for (int i = 0; i < directories.Length; i++)
+            {
+                string newDirName = "";
+                foreach (char c in directories[i])
+                {
+                    if (invalidChars.Contains(c))
+                    {
+                        newDirName += "_";
+                        continue;
+                    }
+
+                    int index = map.IndexOf(c);
+                    if (index != -1)
+                    {
+                        newDirName += mapTo[index];
+                    }
+                    else
+                    {
+                        newDirName += c;
+                    }
+                }
+
+                directories[i] = newDirName;
+                newPath = Path.Combine(newPath, newDirName);
+
+                if (i < directories.Length - 1 && !Directory.Exists(newPath))
+                {
+                    Directory.CreateDirectory(newPath);
+                }
+            }
+
+            if (File.Exists(path))
+            {
+                File.Move(path, newPath);
+            }
+            else if (Directory.Exists(path))
+            {
+                Directory.Move(path, newPath);
+            }
+
+            return newPath;
+        }
+
+
+
         // Будем распараллеливать открытие большого файла
         private async Task RunLongOperationAsync()
         {
             await Task.Run(() =>
             {
                 // Здесь выполняется самая длительная операция
-                string raw_filepath_with_params = raw_filepath + "\n" + alpha_threshold.ToString() + "\n" + start_offset.ToString() + "\n" + refractory_period.ToString();
+                string raw_filepath_with_params = raw_filepath + "\n" + alpha_threshold.ToString() + "\n" + start_offset.ToString() + "\n" + refractory_period.ToString() + "\n" + limit_radius.ToString();
                 string scriptPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PythonScripts", "Save_APs_to_C#.py");
-                Tuple<string, double[][], double[], double[], double[], double[]> pythonData = RunPythonScript_AllPD(pythonExePath, scriptPath, raw_filepath_with_params);
+                var pythonData = Backend.RunPythonScript_AllPD(pythonExePath, scriptPath, raw_filepath_with_params); 
+                
                 separating_path = pythonData.Item1;
                 intervals = pythonData.Item2;
                 phase_0_speed_array = pythonData.Item3;
                 phase_4_speed_array = pythonData.Item4;
                 num_of_APs = pythonData.Item5;
                 radius_array = pythonData.Item6;
+                x_y_array = pythonData.Item7;
+                x_y_for_offset_array = pythonData.Item8;
 
-                check = true;
+                check_ForFirstOpen = true;
             });
         }
 
-        // самый гейский гей 
-        private static Tuple<string, double[][], double[], double[], double[], double[]> RunPythonScript_AllPD(string pythonPath, string scriptPath, string arguments)
+        private async Task RunLongOperationAsync_ForSeparated_File()
         {
-            ProcessStartInfo startInfo = new ProcessStartInfo
+            await Task.Run(() =>
             {
-                FileName = pythonPath,
-                Arguments = $"\"{scriptPath}\" {arguments}", // Заключите путь к скрипту в двойные кавычки
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-
-            using (Process process = new Process { StartInfo = startInfo })
-            {
-                process.Start();
-                string output = process.StandardOutput.ReadToEnd();
-                string error = process.StandardError.ReadToEnd();
-                process.WaitForExit();
-
-                if (!string.IsNullOrEmpty(error))
-                {
-                    throw new Exception($"Python script error: {error}");
-                }
-
-                var lines = output.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
-
-                if (lines.Length < 2)
-                {
-                    throw new Exception("Python script output is not in the expected format.");
-                }
-
-                CultureInfo invariantCulture = CultureInfo.InvariantCulture;
-
-                string input_intervals = lines[0];
-                double[][] numbers = JsonConvert.DeserializeObject<double[][]>(input_intervals);
-
-                string separating_path = lines[1];
-
-                string input_dV0 = lines[2];
-                double[] phase_0_speed_list = JsonConvert.DeserializeObject<double[]>(input_dV0);
-
-                string input_dV4 = lines[3];
-                double[] phase_4_speed_list = JsonConvert.DeserializeObject<double[]>(input_dV4);
-
-                string input_num_of_APs = lines[4];
-                double[] num_of_APs = JsonConvert.DeserializeObject<double[]>(input_num_of_APs);
-
-                string input_radius_list = lines[5];
-                double[] radius_list = JsonConvert.DeserializeObject<double[]>(input_radius_list);
-
-
-                return Tuple.Create(separating_path, numbers, phase_0_speed_list, phase_4_speed_list, num_of_APs, radius_list);
-            }
+                // Здесь выполняется самая длительная операция
+                string raw_filepath_with_params = raw_filepath + "\n" + alpha_threshold.ToString() + "\n" + start_offset.ToString() + "\n" + refractory_period.ToString() + "\n" + limit_radius.ToString();
+                string scriptPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PythonScripts", "Circle_to_C#.py");
+                // Достаем данные для круга и скоростей
+                Tuple<double, double, double, double, double, double, double> CircleData = Backend.RunPythonScriptCircle(pythonExePath, scriptPath, raw_filepath_with_params);
+                current_radius = CircleData.Item1;
+                x_local = CircleData.Item2;
+                y_local = CircleData.Item3;
+                phase_0_speed = CircleData.Item4;
+                phase_4_speed = CircleData.Item5;
+                x_offset = CircleData.Item6;
+                y_offset = CircleData.Item7;
+            });
         }
 
-        // Построить большой график со всеми ПД и графики изменения скоростей и радиуса от номера ПД
-        //private void PlotAllBtn_Click(object sender, RoutedEventArgs e)
-        //{
-        //    // Очистка графика перед построением
-        //    All_AP_Plot.Plot.Clear();
-        //
-        //    // Предварительно Нацеливаемся на 1 первый файл (хоть 1 то должен быть) 
-        //    targetFile = separating_path + "/1.txt";
-        //
-        //    // Обработка всех файлов в указанной директории
-        //    foreach (string filePath in Directory.GetFiles(separating_path))
-        //    {
-        //        if (System.IO.Path.GetExtension(filePath) != ".txt") continue; // Игнорируем файлы, отличные от .txt
-        //
-        //        // Считывание данных из файла
-        //        var data = File.ReadLines(filePath)
-        //        .Select(line => line.Split('\t'))
-        //        .Where(parts => parts.Length == 2)
-        //        .Select(parts =>
-        //        {
-        //            double time = 0;
-        //            double potential = 0;
-        //            double.TryParse(parts[0], NumberStyles.Any, CultureInfo.InvariantCulture, out time);
-        //            double.TryParse(parts[1], NumberStyles.Any, CultureInfo.InvariantCulture, out potential);
-        //            return new
-        //            {
-        //                Time = time,
-        //                Potential = potential
-        //            };
-        //        })
-        //        .ToArray();
-        //
-        //        // Построение графика
-        //        All_AP_Plot.Plot.AddScatter(
-        //            data.Select(point => point.Time).ToArray(),
-        //            data.Select(point => point.Potential).ToArray()
-        //        );
-        //    }
-        //
-        //    // Добавление пунктирных линий, соответствующих значениям из массива intervals
-        //    for (int i = 0; i < intervals.Length; i++)
-        //    {
-        //        for (int j = 0; j < intervals[i].Length; j++)
-        //        {
-        //            double xValue = intervals[i][j];
-        //            All_AP_Plot.Plot.AddVerticalLine(xValue, color: System.Drawing.Color.Gray, style: LineStyle.Dash);
-        //        }
-        //    }
-        //
-        //    // Обновление графика
-        //    All_AP_Plot.Refresh();
-        //
-        //    // находим длительность эксперимента в мс
-        //    double[] lastInterval = intervals[intervals.Length - 1];
-        //    double lastValue = lastInterval[lastInterval.Length - 1];
-        //
-        //    // Переводим миллисекунды в минуты, секунды и доли секунды
-        //    int minutes = (int)(lastValue / 60000);
-        //    int seconds = (int)((lastValue % 60000) / 1000);
-        //    int fractionalSeconds = (int)(lastValue % 1000);
-        //
-        //    // Форматируем значения в нужном формате
-        //    string formattedDuration = string.Format("{0:D2}:{1:D2}:{2:D3}", minutes, seconds, fractionalSeconds);
-        //
-        //    // Выводим сообщение с отформатированным значением
-        //    Experiment_duration_label.Content = "Experiment duration: " + formattedDuration;
-        //
-        //    RdV0_Plot.Plot.Clear();
-        //    RdV4_Plot.Plot.Clear();
-        //    dR_Plot.Plot.Clear();
-        //    RdV0_Plot.Plot.AddScatter(num_of_APs, phase_0_speed_array);
-        //    RdV4_Plot.Plot.AddScatter(num_of_APs, phase_4_speed_array);
-        //    dR_Plot.Plot.AddScatter(num_of_APs, radius_array);
-        //    RdV0_Plot.Refresh();
-        //    RdV4_Plot.Refresh();
-        //    dR_Plot.Refresh();
-        //}
 
-        private async void PlotAllBtn_Click(object sender, RoutedEventArgs e)
+        // Кнопка выполняет функуцию обновления графика
+        private void PlotAllBtn_Click(object sender, RoutedEventArgs e)
+        {
+            // вся логика вынесена в отдельную функцию
+            UpdateStatisticAsync();
+        }
+
+        // Строим все графики, кроме одиночного ПД
+        private async Task PlotAllAsync()
         {
             // проверка на window size
-            string check_window_sise = "";
-
-            // Используем Dispatcher.BeginInvoke для обновления TextBox
-            await Application.Current.Dispatcher.BeginInvoke(new Action(() =>
-            {
-                // Код, взаимодействующий с TextBox
-                check_window_sise = window_size_TextBox.Text.Trim();
-            }));
-            if (!int.TryParse(check_window_sise, out window_size) | !(window_size <= num_of_APs.Length - 1))
+            if (!int.TryParse(window_size_TextBox.Text.Trim(), out int window_size) | !(window_size <= num_of_APs.Length - 1))
             {
                 MessageBox.Show("Decrease the value of \"window_size\" or set it correctly");
             }
@@ -353,63 +344,19 @@ namespace Potentials
                 All_AP_Plot.Plot.Clear();
 
                 // Предварительно Нацеливаемся на 1 первый файл (хоть 1 то должен быть)
-                targetFile = separating_path + "/1.txt";
+                string targetFile = separating_path + "/1.txt";
 
                 // От борьбы 2 потоков за одни и те же данные
                 FindAPBtn.IsEnabled = false;
 
-                // Обработка всех файлов в указанной директории
-                foreach (string filePath in Directory.GetFiles(separating_path))
-                {
-                    if (System.IO.Path.GetExtension(filePath) != ".txt") continue; // Игнорируем файлы, отличные от .txt
+                var fileTasks = Directory.EnumerateFiles(separating_path)
+                    .Where(filePath => System.IO.Path.GetExtension(filePath) == ".txt")
+                    .Select(ProcessFileAsync);
 
-                    // Считывание данных из файла в фоновом потоке
-                    var data = await Task.Run(() =>
-                    {
-                        List<double> times = new List<double>();
-                        List<double> potentials = new List<double>();
-                        int lineCount = 0;
+                await Task.WhenAll(fileTasks);
 
-                        using (StreamReader reader = new StreamReader(filePath))
-                        {
-                            string line;
-                            while ((line = reader.ReadLine()) != null)
-                            {
-                                // читаем каждую третью строку
-                                if (lineCount % 16 == 0)
-                                {
-                                    var parts = line.Split('\t');
-                                    if (parts.Length == 2)
-                                    {
-                                        if (double.TryParse(parts[0], NumberStyles.Any, CultureInfo.InvariantCulture, out double time) &&
-                                            double.TryParse(parts[1], NumberStyles.Any, CultureInfo.InvariantCulture, out double potential))
-                                        {
-                                            times.Add(time);
-                                            potentials.Add(potential);
-                                        }
-                                    }
-                                }
-                                lineCount++;
-                            }
-                        }
-
-                        return new { Times = times, Potentials = potentials };
-                    });
-                    // Построение графика
-                    All_AP_Plot.Plot.AddScatterLines(data.Times.ToArray(), data.Potentials.ToArray(), lineWidth: 5, color: System.Drawing.Color.Black);
-
-                    // используем наш custom formatter для формата времени под mm:ss:ff на большом графике
-                    All_AP_Plot.Plot.XAxis.TickLabelFormat(customTickFormatter);
-
-
-                    // Возвращаем свободу дейсвий
-                    FindAPBtn.IsEnabled = true;
-
-                    //Построение графика с использованием каждой 3-й точки
-                    //var reducedTimes = data.Times.Where((_, index) => index % 5 == 0).ToArray();
-                    //var reducedPotentials = data.Potentials.Where((_, index) => index % 5 == 0).ToArray();
-                    //All_AP_Plot.Plot.AddScatter(reducedTimes, reducedPotentials);
-                }
+                // Возвращаем свободу дейсвий
+                FindAPBtn.IsEnabled = true;
 
                 // Настройка пределов осей для отображения только первых 500 точек
                 All_AP_Plot.Plot.SetAxisLimits(0, 2500, double.NaN, double.NaN);
@@ -424,8 +371,7 @@ namespace Potentials
                     }
                 }
 
-                All_AP_Plot.Plot.SetAxisLimitsY(-100, 40);
-
+                All_AP_Plot.Plot.SetAxisLimitsY(-100, 60);
 
                 All_AP_Plot.Plot.Benchmark(enable: true);
 
@@ -452,37 +398,51 @@ namespace Potentials
                 dR_Plot.Plot.Clear();
 
                 // фокусы для доверительных интервалов -------------------------------------------------------
-                var dV0 = ConfidenceIntervals(num_of_APs, phase_0_speed_array, window_size);
-                double[] num_of_APs_20 = dV0.Item1;
+                var dV0 = Backend.ConfidenceIntervals_same(num_of_APs, phase_0_speed_array, window_size);
+                double[] num_of_APs_window_size = dV0.Item1;
                 double[] means_dV0 = dV0.Item2;
                 double[] confidenceInterval_dV0 = dV0.Item3;
-                double[] confidenceInterval1_dV0 = dV0.Item4;
 
-                var dV4 = ConfidenceIntervals(num_of_APs, phase_4_speed_array, window_size);
+                var dV4 = Backend.ConfidenceIntervals_same(num_of_APs, phase_4_speed_array, window_size);
                 double[] means_dV4 = dV4.Item2;
                 double[] confidenceInterval_dV4 = dV4.Item3;
-                double[] confidenceInterval1_dV4 = dV4.Item4;
 
-                var dR = ConfidenceIntervals(num_of_APs, radius_array, window_size);
+                var dR = Backend.ConfidenceIntervals_same(num_of_APs, radius_array, window_size);
                 double[] means_dR = dR.Item2;
                 double[] confidenceInterval_dR = dR.Item3;
-                double[] confidenceInterval1_dR = dR.Item4;
+
+                // используем наш custom formatter для формата времени под mm:ss:ff на большом графике
+                All_AP_Plot.Plot.XAxis.TickLabelFormat(Backend.customTickFormatter);
 
                 // Строим графики с доверительными интервалами 
-                RdV0_Plot.Plot.AddScatter(num_of_APs_20, means_dV0, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red));
-                RdV0_Plot.Plot.AddErrorBars(num_of_APs_20, means_dV0, confidenceInterval_dV0, confidenceInterval1_dV0);
+                if (user_or_banana)
+                {
+                    RdV0_Plot.Plot.AddScatter(num_of_APs_window_size, means_dV0, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red), lineWidth: 0, markerSize: 10);
+                    RdV0_Plot.Plot.AddErrorBars(num_of_APs_window_size, means_dV0, null, confidenceInterval_dV0);
 
-                RdV4_Plot.Plot.AddScatter(num_of_APs_20, means_dV4, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red));
-                RdV4_Plot.Plot.AddErrorBars(num_of_APs_20, means_dV4, confidenceInterval_dV4, confidenceInterval1_dV4);
+                    RdV4_Plot.Plot.AddScatter(num_of_APs_window_size, means_dV4, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red), lineWidth: 0, markerSize: 10);
+                    RdV4_Plot.Plot.AddErrorBars(num_of_APs_window_size, means_dV4, null, confidenceInterval_dV4);
 
-                dR_Plot.Plot.AddScatter(num_of_APs_20, means_dR);
-                dR_Plot.Plot.AddErrorBars(num_of_APs_20, means_dR, confidenceInterval_dR, confidenceInterval1_dR);
+                    dR_Plot.Plot.AddScatter(num_of_APs_window_size, means_dR, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Blue), lineWidth: 0, markerSize: 10);
+                    dR_Plot.Plot.AddErrorBars(num_of_APs_window_size, means_dR, null, confidenceInterval_dR);
+
+                }
+                else
+                {
+                    RdV0_Plot.Plot.AddScatter(num_of_APs_window_size, means_dV0, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red), lineStyle: LineStyle.Dot);
+                    RdV0_Plot.Plot.AddErrorBars(num_of_APs_window_size, means_dV0, null, confidenceInterval_dV0);
+
+                    RdV4_Plot.Plot.AddScatter(num_of_APs_window_size, means_dV4, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red), lineStyle: LineStyle.Dot);
+                    RdV4_Plot.Plot.AddErrorBars(num_of_APs_window_size, means_dV4, null, confidenceInterval_dV4);
+
+                    dR_Plot.Plot.AddScatter(num_of_APs_window_size, means_dR, lineStyle: LineStyle.Dot);
+                    dR_Plot.Plot.AddErrorBars(num_of_APs_window_size, means_dR, null, confidenceInterval_dR);
+                }
 
 
-                // Неактуально, для построения графиков без доверительных интервалов
-                //RdV0_Plot.Plot.AddScatter(num_of_APs, phase_0_speed_array, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red));
-                //RdV4_Plot.Plot.AddScatter(num_of_APs, phase_4_speed_array, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red));
-                //dR_Plot.Plot.AddScatter(num_of_APs, radius_array);
+                //RdV0_Plot.Plot.Benchmark(enable: true);
+                //RdV4_Plot.Plot.Benchmark(enable: true);
+                //dR_Plot.Plot.Benchmark(enable: true);
 
                 RdV0_Plot.Refresh();
                 RdV4_Plot.Refresh();
@@ -490,57 +450,92 @@ namespace Potentials
             }
         }
 
-        // Делаем кортеж для потсроения доверительных интервалов с учетом windowSize
-        static Tuple<double[], double[], double[], double[]> ConfidenceIntervals(double[] num_of_APs, double[] phase_0_4_speed_or_Radius_array, int windowSize)
+        private void UpdateStatisticAsync()
         {
-            // фокусы для доверительных интервалов
-            List<double> num_of_APs_20 = new List<double>();
-            List<double> phase_0_speed_array_20 = new List<double>();
-
-            for (int i = 0; i < num_of_APs.Length; i++)
+            // проверка на window size
+            if (!int.TryParse(window_size_TextBox.Text.Trim(), out int window_size) | !(window_size <= num_of_APs.Length - 1))
             {
-                if (i % windowSize == 0)
+                MessageBox.Show("Decrease the value of \"window_size\" or set it correctly");
+            }
+            else
+            {
+                // находим длительность эксперимента в мс
+                double[] lastInterval = intervals[intervals.Length - 1];
+                double lastValue = lastInterval[lastInterval.Length - 1];
+
+                // Переводим миллисекунды в минуты, секунды и доли секунды
+                int minutes = (int)(lastValue / 60000);
+                int seconds = (int)((lastValue % 60000) / 1000);
+                int fractionalSeconds = (int)(lastValue % 1000);
+
+                // Форматируем значения в нужном формате
+                string formattedDuration = string.Format("{0:D2}:{1:D2}:{2:D3}", minutes, seconds, fractionalSeconds);
+
+                // Выводим сообщение с отформатированным значением
+                Experiment_duration_label.Text = "Experiment duration: " + formattedDuration;
+
+                RdV0_Plot.Plot.Clear();
+                RdV4_Plot.Plot.Clear();
+                dR_Plot.Plot.Clear();
+
+                // фокусы для доверительных интервалов -------------------------------------------------------
+                var dV0 = Backend.ConfidenceIntervals_same(num_of_APs, phase_0_speed_array, window_size);
+                double[] num_of_APs_window_size = dV0.Item1;
+                double[] means_dV0 = dV0.Item2;
+                double[] confidenceInterval_dV0 = dV0.Item3;
+
+                var dV4 = Backend.ConfidenceIntervals_same(num_of_APs, phase_4_speed_array, window_size);
+                double[] means_dV4 = dV4.Item2;
+                double[] confidenceInterval_dV4 = dV4.Item3;
+
+                var dR = Backend.ConfidenceIntervals_same(num_of_APs, radius_array, window_size);
+                double[] means_dR = dR.Item2;
+                double[] confidenceInterval_dR = dR.Item3;
+
+                // используем наш custom formatter для формата времени под mm:ss:ff на большом графике
+                All_AP_Plot.Plot.XAxis.TickLabelFormat(Backend.customTickFormatter);
+
+                // Строим графики с доверительными интервалами 
+                if (user_or_banana)
                 {
-                    num_of_APs_20.Add(num_of_APs[i]);
-                    phase_0_speed_array_20.Add(phase_0_4_speed_or_Radius_array[i]);
+                    RdV0_Plot.Plot.AddScatter(num_of_APs_window_size, means_dV0, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red), lineWidth: 0, markerSize: 10);
+                    RdV0_Plot.Plot.AddErrorBars(num_of_APs_window_size, means_dV0, null, confidenceInterval_dV0);
+
+                    RdV4_Plot.Plot.AddScatter(num_of_APs_window_size, means_dV4, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red), lineWidth: 0, markerSize: 10);
+                    RdV4_Plot.Plot.AddErrorBars(num_of_APs_window_size, means_dV4, null, confidenceInterval_dV4);
+
+                    dR_Plot.Plot.AddScatter(num_of_APs_window_size, means_dR, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Blue), lineWidth: 0, markerSize: 10);
+                    dR_Plot.Plot.AddErrorBars(num_of_APs_window_size, means_dR, null, confidenceInterval_dR);
+
                 }
+                else
+                {
+                    RdV0_Plot.Plot.AddScatter(num_of_APs_window_size, means_dV0, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red), lineStyle: LineStyle.Dot);
+                    RdV0_Plot.Plot.AddErrorBars(num_of_APs_window_size, means_dV0, null, confidenceInterval_dV0);
+
+                    RdV4_Plot.Plot.AddScatter(num_of_APs_window_size, means_dV4, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red), lineStyle: LineStyle.Dot);
+                    RdV4_Plot.Plot.AddErrorBars(num_of_APs_window_size, means_dV4, null, confidenceInterval_dV4);
+
+                    dR_Plot.Plot.AddScatter(num_of_APs_window_size, means_dR, lineStyle: LineStyle.Dot);
+                    dR_Plot.Plot.AddErrorBars(num_of_APs_window_size, means_dR, null, confidenceInterval_dR);
+                }
+
+                //RdV0_Plot.Plot.Benchmark(enable: true);
+                //RdV4_Plot.Plot.Benchmark(enable: true);
+                //dR_Plot.Plot.Benchmark(enable: true);
+
+                RdV0_Plot.Refresh();
+                RdV4_Plot.Refresh();
+                dR_Plot.Refresh();
             }
-
-            //int windowSize = 10;
-            List<double> means = new List<double>();
-            List<double> standardDeviations = new List<double>();
-
-            for (int i = 0; i < phase_0_4_speed_or_Radius_array.Length; i += windowSize)
-            {
-                double[] window = phase_0_4_speed_or_Radius_array.Skip(i).Take(windowSize).ToArray();
-                double mean = window.Average();
-                double sumOfSquaresOfDifferences = window.Select(val => (val - mean) * (val - mean)).Sum();
-                double standardDeviation = Math.Sqrt(sumOfSquaresOfDifferences / window.Length);
-
-                means.Add(mean);
-                standardDeviations.Add(standardDeviation);
-            }
-            // Доверительные интервалы для каждого окна:
-            double standardError = standardDeviations.Average() / Math.Sqrt(windowSize);
-            double confidenceInterval95 = 1.96 * standardError;
-
-            return Tuple.Create(num_of_APs_20.ToArray(), means.ToArray(), Enumerable.Repeat(confidenceInterval95, num_of_APs_20.Count).ToArray(), Enumerable.Repeat(confidenceInterval95, num_of_APs_20.Count).ToArray());
         }
 
-
-
-        public static void ParseTime(string raw_time, out int minutes, out int seconds, out int fraction_seconds)
+        private async Task ProcessFileAsync(string filePath)
         {
-            string[] time_parts = raw_time.Split(':');
+            var data = await Task.Run(() => Backend.ReadFileData_ForAllPlot(filePath));
 
-            if (time_parts.Length != 3)
-            {
-                MessageBox.Show("Invalid time format, expected mm:ss:ff");
-            }
-
-            minutes = int.Parse(time_parts[0]);
-            seconds = int.Parse(time_parts[1]);
-            fraction_seconds = int.Parse(time_parts[2]);
+            // Построение графика
+            All_AP_Plot.Plot.AddScatterLines(data.Times.ToArray(), data.Potentials.ToArray(), lineWidth: 5, color: System.Drawing.Color.Black);
         }
 
         // найти по заданному времени участок и построить графики
@@ -549,16 +544,16 @@ namespace Potentials
             try
             {
                 // Чтобы 2 потока не боролись за одни и те же данные
-                PlotAllBtn.IsEnabled = false;
+                UpdateStatisticBtn.IsEnabled = false;
 
                 // Строим график для 1 ПД
                 raw_time = TimeTextBox.Text.Trim();
 
-                ParseTime(raw_time, out int minutes, out int seconds, out int fraction_seconds);
+                Backend.ParseTime(raw_time, out int minutes, out int seconds, out int fraction_seconds);
 
                 time_ms = (minutes * 60 * 1000) + (seconds * 1000) + fraction_seconds;
 
-                var result = FindFileForTime(separating_path, time_ms);
+                var result = Backend.FindFileForTime(separating_path, time_ms);
                 targetFile = result.Item1;
                 start_time = result.Item2;
                 end_time = result.Item3;
@@ -578,7 +573,7 @@ namespace Potentials
 
 
                 // Возвращаем возможность строить остальное
-                PlotAllBtn.IsEnabled = true;
+                UpdateStatisticBtn.IsEnabled = true;
 
             }
             catch (Exception ex)
@@ -586,24 +581,23 @@ namespace Potentials
                 MessageBox.Show($"An error occurred: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 
                 // Возвращаем возможность строить остальное
-                PlotAllBtn.IsEnabled = true;
+                UpdateStatisticBtn.IsEnabled = true;
             }
         }
 
         private void FindAP_by_number_Btn_Click(object sender, RoutedEventArgs e)
         {
-            // пока тут заглушка
             try
             {
                 // Чтобы 2 потока не боролись за одни и те же данные
-                PlotAllBtn.IsEnabled = false;
+                UpdateStatisticBtn.IsEnabled = false;
 
                 // Строим график для 1 ПД
                 raw_time = TimeTextBox.Text.Trim();
 
                 if (int.TryParse(NumberAP_TextBox.Text.Trim(), out int numberAP))
                 {
-                    var result = FindFileForNumber(separating_path, numberAP);
+                    var result = Backend.FindFileForNumber(separating_path, numberAP);
                     targetFile = result.Item1;
                     start_time = result.Item2;
                     end_time = result.Item3;
@@ -627,7 +621,7 @@ namespace Potentials
                 }
 
                 // Возвращаем возможность строить остальное
-                PlotAllBtn.IsEnabled = true;
+                UpdateStatisticBtn.IsEnabled = true;
 
             }
             catch (Exception ex)
@@ -635,53 +629,24 @@ namespace Potentials
                 MessageBox.Show($"An error occurred: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
 
                 // Возвращаем возможность строить остальное
-                PlotAllBtn.IsEnabled = true;
+                UpdateStatisticBtn.IsEnabled = true;
             }
         }
-        // метод для поиска файла по номеру ПД, пока заглушка
-        static Tuple<string, double, double> FindFileForNumber(string separating_path, int numberAP)
-        {
-            string targetFile = System.IO.Path.Combine(separating_path, $"{numberAP}.txt");
-            double startTime = 0;
-            double endTime = 0;
-
-            if (File.Exists(targetFile))
-            {
-                using (StreamReader sr = new StreamReader(targetFile))
-                {
-                    string[] firstLine = sr.ReadLine()?.Split('\t');
-                    string[] lastLine = null;
-                    string line;
-
-                    while ((line = sr.ReadLine()) != null)
-                    {
-                        lastLine = line.Split('\t');
-                    }
-
-                    if (lastLine != null)
-                    {
-                        startTime = double.Parse(firstLine[0], CultureInfo.InvariantCulture);
-                        endTime = double.Parse(lastLine[0], CultureInfo.InvariantCulture);
-                    }
-                }
-            }
-
-            return Tuple.Create(targetFile, startTime, endTime);
-        }
+        
 
         // общий метод построения графиков в маленьком окошке и смещения красных прямых
         void Plot_And_Refresh()
         {
             // Проверим, не сломал ли пользователь параметры
-            Params = double.TryParse(alpha_threshold_TextBox.Text.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out alpha_threshold) & int.TryParse(start_offset_TextBox.Text.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out start_offset) & int.TryParse(refractory_period_TextBox.Text.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out refractory_period);
+            Params = double.TryParse(alpha_threshold_TextBox.Text.Trim().Replace('.', ','), out alpha_threshold) & int.TryParse(start_offset_TextBox.Text.Trim(), out start_offset) & int.TryParse(refractory_period_TextBox.Text.Trim(), out refractory_period) & double.TryParse(limit_radius_TextBox.Text.Trim().Replace('.', ','), out limit_radius);
 
-            string targetFile_with_params = targetFile + "\n" + alpha_threshold.ToString() + "\n" + start_offset.ToString() + "\n" + refractory_period.ToString(); ;
+            string targetFile_with_params = targetFile + "\n" + alpha_threshold.ToString() + "\n" + start_offset.ToString() + "\n" + refractory_period.ToString() +"\n" + limit_radius.ToString();
             if (Params)
             {
                 alpha_threshold = Math.Round(alpha_threshold, 3);
 
                 double[] time, voltage;
-                if (ParseFileData(targetFile, out time, out voltage))
+                if (Backend.ParseFileData(targetFile, out time, out voltage))
                 {
                     // Очистка графика перед построением
                     One_AP_Plot.Plot.Clear();
@@ -689,29 +654,19 @@ namespace Potentials
                     // Убираем красные хуйни
                     RemoveRedVerticalLines();
 
-                    string scriptPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PythonScripts", "Circle_to_C#.py");
-                    // Достаем данные для круга и скоростей
-                    Tuple<double, double, double, double, double> CircleData = RunPythonScriptCircle(pythonExePath, scriptPath, targetFile_with_params);
-                    current_radius = CircleData.Item1;
-                    double x = CircleData.Item2;
-                    double y = CircleData.Item3;
-                    phase_0_speed = CircleData.Item4;
-                    phase_4_speed = CircleData.Item5;
+                    int currentFileNum = Convert.ToInt32(Path.GetFileNameWithoutExtension(targetFile));
 
                     // Строим заготовку
-                    One_AP_Plot.Plot.AddScatterLines(time, voltage, lineWidth: 5, label: $"R = {current_radius}");
+                    One_AP_Plot.Plot.AddScatterLines(time, voltage, lineWidth: 5, label: $"R = {radius_array[currentFileNum-1]}\r\nN = {currentFileNum}");
+
+                    One_AP_Plot.Plot.AddMarker(x_y_for_offset_array[currentFileNum - 1][0], x_y_for_offset_array[currentFileNum - 1][1], MarkerShape.filledCircle, 15, System.Drawing.Color.GreenYellow);
 
                     // calculate the first derivative
-
                     double[] deriv = new double[voltage.Length];
-                    //for (int i = 1; i < deriv.Length; i++)
-                    //    deriv[i] = (voltage[i] - voltage[i - 1]) * time[i];
-                    //deriv[0] = deriv[1];
-
-                    deriv = CalculateDerivative(voltage, time);
+                    deriv = Backend.CalculateDerivative(voltage, time);
 
                     // plot the first derivative in red on the secondary Y axis
-                    var dVdt = One_AP_Plot.Plot.AddScatterLines(time, deriv, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red), label: $"(dV/dt)0 =  {phase_0_speed} V/s\r\n(dV/dt)4 = {phase_4_speed} mV/s");
+                    var dVdt = One_AP_Plot.Plot.AddScatterLines(time, deriv, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red), label: $"(dV/dt)0 =  {phase_0_speed_array[currentFileNum-1]} V/s\r\n(dV/dt)4 = {phase_4_speed_array[currentFileNum - 1]} mV/s");
                     dVdt.YAxisIndex = 1;
                     dVdt.LineWidth = 3;
                     var legend = One_AP_Plot.Plot.Legend(enable: true);
@@ -723,23 +678,21 @@ namespace Potentials
                     All_AP_Plot.Plot.AddVerticalLine(end_time, color: System.Drawing.Color.Red, style: LineStyle.Solid);
 
                     // Добавляем на график круг
-                    One_AP_Plot.Plot.AddCircle(x, y, current_radius, color: System.Drawing.Color.Red);
+                    One_AP_Plot.Plot.AddCircle(x_y_array[currentFileNum-1][0], x_y_array[currentFileNum-1][1], radius_array[currentFileNum - 1], color: System.Drawing.Color.Red);
 
                     // добавление горизорнтальной полоски Овершут
                     One_AP_Plot.Plot.AddHorizontalLine(0, color: System.Drawing.Color.Gray, style: LineStyle.Dash);
-                    //All_AP_Plot.Plot.AddHorizontalLine(0, color: System.Drawing.Color.Gray, style: LineStyle.Dash);
-
-                    One_AP_Plot.Plot.SetAxisLimitsY(-90, 40);
+                    One_AP_Plot.Plot.SetAxisLimitsY(-150, 110);
 
                     // Переход на большом графике к интересному месту
                     All_AP_Plot.Plot.SetAxisLimitsX(start_time - 1000, end_time + 1000);
-                    All_AP_Plot.Plot.SetAxisLimitsY(-100, 30);
+                    All_AP_Plot.Plot.SetAxisLimitsY(-100, 60);
 
                     // используем наш custom formatter для формата времени под mm:ss:ff на маленьком графике
-                    One_AP_Plot.Plot.XAxis.TickLabelFormat(customTickFormatter);
+                    One_AP_Plot.Plot.XAxis.TickLabelFormat(Backend.customTickFormatter);
 
 
-                    One_AP_Plot.Plot.Benchmark(enable: true);
+                    //One_AP_Plot.Plot.Benchmark(enable: true);
                     All_AP_Plot.Plot.Benchmark(enable: true);
 
                     One_AP_Plot.Refresh();
@@ -759,124 +712,46 @@ namespace Potentials
             }
         }
 
-        // меняет формат отображения с мс на нормальный mm:ss:ff
-        string customTickFormatter(double position)
+        void Plot_OneAP()
         {
-            TimeSpan times = TimeSpan.FromMilliseconds(position);
-            return times.ToString(@"mm\:ss\:fff");
+            // Очистка графика перед построением
+            One_AP_Plot.Plot.Clear();
+            double[] time, voltage;
+            if (Backend.ParseFileData(raw_filepath, out time, out voltage))
+            {
+                // Строим заготовку
+                One_AP_Plot.Plot.AddScatterLines(time, voltage, lineWidth: 5, label: $"R = {current_radius}");
+
+                One_AP_Plot.Plot.AddMarker(x_offset, y_offset, MarkerShape.filledCircle, 15, System.Drawing.Color.GreenYellow);
+
+                // calculate the first derivative
+                double[] deriv = new double[voltage.Length];
+                deriv = Backend.CalculateDerivative(voltage, time);
+
+                // plot the first derivative in red on the secondary Y axis
+                var dVdt = One_AP_Plot.Plot.AddScatterLines(time, deriv, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red), label: $"(dV/dt)0 =  {phase_0_speed} V/s\r\n(dV/dt)4 = {phase_4_speed} mV/s");
+                dVdt.YAxisIndex = 1;
+                dVdt.LineWidth = 3;
+                var legend = One_AP_Plot.Plot.Legend(enable: true);
+                legend.Orientation = ScottPlot.Orientation.Horizontal;
+
+                // Добавляем на график круг
+                One_AP_Plot.Plot.AddCircle(x_local, y_local, current_radius, color: System.Drawing.Color.Red);
+
+                // добавление горизорнтальной полоски Овершут
+                One_AP_Plot.Plot.AddHorizontalLine(0, color: System.Drawing.Color.Gray, style: LineStyle.Dash);
+
+                One_AP_Plot.Plot.SetAxisLimitsY(-150, 110);
+
+                // используем наш custom formatter для формата времени под mm:ss:ff на маленьком графике
+                One_AP_Plot.Plot.XAxis.TickLabelFormat(Backend.customTickFormatter);
+                
+                // Обновление графика
+                //One_AP_Plot.Plot.Benchmark(enable: true);
+                One_AP_Plot.Refresh();
+            }
         }
 
-        // считает производную для маленького графика
-        static double[] CalculateDerivative(double[] voltage, double[] time)
-        {
-            if (voltage.Length != time.Length)
-            {
-                throw new ArgumentException("The length of voltage and time arrays must be equal.");
-            }
-
-            int length = voltage.Length;
-            double[] deriv = new double[length];
-
-            for (int i = 0; i < length; i++)
-            {
-                if (i == 0)
-                {
-                    // Вычисляем первую производную для первого элемента
-                    deriv[i] = (voltage[i + 1] - voltage[i]) / (time[i + 1] - time[i]);
-                }
-                else if (i == length - 1)
-                {
-                    // Вычисляем первую производную для последнего элемента
-                    deriv[i] = (voltage[i] - voltage[i - 1]) / (time[i] - time[i - 1]);
-                }
-                else
-                {
-                    // Вычисляем среднее значение первых производных для внутренних элементов
-                    double forwardDifference = (voltage[i + 1] - voltage[i]) / (time[i + 1] - time[i]);
-                    double backwardDifference = (voltage[i] - voltage[i - 1]) / (time[i] - time[i - 1]);
-                    deriv[i] = (forwardDifference + backwardDifference) / 2.0;
-                }
-            }
-
-            return deriv;
-        }
-
-        // закинул конкретный момент времени, получил файлик и его границы
-        static Tuple<string, double, double> FindFileForTime(string separating_path, double time_ms)
-        {
-            string[] files = Directory.GetFiles(separating_path, "*.txt");
-            string targetFile = string.Empty;
-            double startTime = 0;
-            double endTime = 0;
-
-            foreach (string file in files)
-            {
-                using (StreamReader sr = new StreamReader(file))
-                {
-                    string[] firstLine = sr.ReadLine().Split('\t');
-                    string[] lastLine = null;
-                    string line;
-
-                    while ((line = sr.ReadLine()) != null)
-                    {
-                        lastLine = line.Split('\t');
-                    }
-
-                    if (lastLine != null)
-                    {
-                        startTime = double.Parse(firstLine[0], CultureInfo.InvariantCulture);
-                        endTime = double.Parse(lastLine[0], CultureInfo.InvariantCulture);
-
-                        if (time_ms >= startTime && time_ms <= endTime)
-                        {
-                            targetFile = file;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            return Tuple.Create(targetFile, startTime, endTime);
-        }
-
-        // достать массивы для построения графика
-        bool ParseFileData(string filePath, out double[] time, out double[] voltage)
-        {
-            List<double> timeList = new List<double>();
-            List<double> voltageList = new List<double>();
-
-            try
-            {
-                using (StreamReader reader = new StreamReader(filePath))
-                {
-                    string line;
-                    while ((line = reader.ReadLine()) != null)
-                    {
-                        string[] parts = line.Split('\t');
-                        if (parts.Length == 2)
-                        {
-                            double timeValue, voltageValue;
-                            if (double.TryParse(parts[0].Replace(',', '.'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out timeValue) &&
-                                double.TryParse(parts[1].Replace(',', '.'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out voltageValue))
-                            {
-                                timeList.Add(timeValue);
-                                voltageList.Add(voltageValue);
-                            }
-                        }
-                    }
-                }
-
-                time = timeList.ToArray();
-                voltage = voltageList.ToArray();
-                return true;
-            }
-            catch (Exception)
-            {
-                time = null;
-                voltage = null;
-                return false;
-            }
-        }
         // убрать все красные VLines
         private void RemoveRedVerticalLines()
         {
@@ -891,73 +766,7 @@ namespace Potentials
             }
         }
 
-        // достать данные для круга
-        private static Tuple<double, double, double, double, double> RunPythonScriptCircle(string pythonPath, string scriptPath, string arguments)
-        {
-            ProcessStartInfo startInfo = new ProcessStartInfo
-            {
-                FileName = pythonPath,
-                Arguments = $"\"{scriptPath}\" {arguments}", // Заключите путь к скрипту в двойные кавычки
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-
-            using (Process process = new Process { StartInfo = startInfo })
-            {
-                process.Start();
-                string output = process.StandardOutput.ReadToEnd();
-                string error = process.StandardError.ReadToEnd();
-                process.WaitForExit();
-
-                if (!string.IsNullOrEmpty(error))
-                {
-                    throw new Exception($"Python script error: {error}");
-                }
-
-                var lines = output.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
-
-                if (lines.Length < 3)
-                {
-                    throw new Exception("Python script output is not in the expected format.");
-                }
-
-                CultureInfo invariantCulture = CultureInfo.InvariantCulture;
-
-                double radius;
-                if (!double.TryParse(lines[0], NumberStyles.Any, CultureInfo.InvariantCulture, out radius))
-                {
-                    radius = 0;
-                }
-
-                double x;
-                if (!double.TryParse(lines[1], NumberStyles.Any, CultureInfo.InvariantCulture, out x))
-                {
-                    x = 0;
-                }
-
-                double y;
-                if (!double.TryParse(lines[2], NumberStyles.Any, CultureInfo.InvariantCulture, out y))
-                {
-                    y = 0;
-                }
-
-                double dV0;
-                if (!double.TryParse(lines[3], NumberStyles.Any, CultureInfo.InvariantCulture, out dV0))
-                {
-                    dV0 = 0;
-                }
-
-                double dv4;
-                if (!double.TryParse(lines[4], NumberStyles.Any, CultureInfo.InvariantCulture, out dv4))
-                {
-                    dv4 = 0;
-                }
-
-                return Tuple.Create(radius, x, y, dV0, dv4);
-            }
-        }
+        
 
         private void Next_AP_Btn_Click(object sender, RoutedEventArgs e)
         {
@@ -969,7 +778,7 @@ namespace Potentials
             {
                 targetFile = System.IO.Path.Combine(separating_path, newFileName);
 
-                var result = GetMinMaxTime(targetFile);
+                var result = Backend.GetMinMaxTime(targetFile);
                 start_time = result.Item1;
                 end_time = result.Item2;
 
@@ -992,7 +801,7 @@ namespace Potentials
                 
                 targetFile = System.IO.Path.Combine(separating_path, newFileName);
 
-                var result = GetMinMaxTime(targetFile);
+                var result = Backend.GetMinMaxTime(targetFile);
                 start_time = result.Item1;
                 end_time = result.Item2;
 
@@ -1003,100 +812,96 @@ namespace Potentials
                 MessageBox.Show("Смещение влево невозможно.");
             }
         }
-        // найти границы времени по пути к файлику 
-        Tuple<double, double> GetMinMaxTime(string targetFile)
-        {
-            List<double> times = new List<double>();
-            CultureInfo invariantCulture = CultureInfo.InvariantCulture;
-
-            using (StreamReader sr = new StreamReader(targetFile))
-            {
-                string line;
-                while ((line = sr.ReadLine()) != null)
-                {
-                    string[] values = line.Split(new[] { '\t' }, StringSplitOptions.RemoveEmptyEntries);
-                    if (values.Length >= 1)
-                    {
-                        times.Add(double.Parse(values[0], CultureInfo.InvariantCulture));
-                    }
-                }
-            }
-
-            double minTime = double.MaxValue;
-            double maxTime = double.MinValue;
-
-            foreach (double time in times)
-            {
-                minTime = Math.Min(minTime, time);
-                maxTime = Math.Max(maxTime, time);
-            }
-
-            return Tuple.Create(minTime, maxTime);
-        }
+        
 
         private async void SaveAP_Btn_Click(object sender, RoutedEventArgs e)
-        {
-            savedFilePath = SaveFileAndGetPath();
-            string ComboPath = savedFilePath + "\n" + raw_filepath;
-
-            // Работу с TextBox закинем в основной поток от греха подальше
-            await Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+        {          
+            // !! Если пользователь хочет сохранить в табличку файл, который он еще не открыл
+            if (Path.GetFileName(raw_filepath) == "")
             {
-                // Проверим, не сломал ли пользователь параметры
-                Params = double.TryParse(alpha_threshold_TextBox.Text.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out alpha_threshold) & int.TryParse(start_offset_TextBox.Text.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out start_offset) & int.TryParse(refractory_period_TextBox.Text.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out refractory_period);
+                // создание диалогового окна выбора файла
+                OpenFileDialog openFileDialog = new OpenFileDialog();
 
-            }));
+                // настройка параметров диалогового окна
+                openFileDialog.Filter = "Text files (*.txt)|*.txt|All files (*.*)|*.*";
 
-            ComboPath_with_params = ComboPath + "\n" + alpha_threshold.ToString() + "\n" + start_offset.ToString() + "\n" + refractory_period.ToString(); ;
-
-            if (Params)
-            {
-                alpha_threshold = Math.Round(alpha_threshold, 3);
-
-                if (!string.IsNullOrEmpty(savedFilePath))
+                if (!check_ForFirstOpen)
                 {
-                    // Лезем в питон сохранять все в табличку
-                    await RunLongSaveAsync();
-                    if (bebra == "true") { MessageBox.Show($"File saved successfully to\r\n{savedFilePath}"); }
+                    openFileDialog.InitialDirectory = raw_filepath;
                 }
                 else
                 {
-                    MessageBox.Show("The save operation was canceled.");
+                    try
+                    {
+                        openFileDialog.InitialDirectory = System.IO.Path.GetDirectoryName(raw_filepath);
+                    }
+                    catch (Exception)
+                    {
+                        openFileDialog.InitialDirectory = "c:\\";
+                    }
                 }
+
+                // отображение диалогового окна
+                if (openFileDialog.ShowDialog() == true)
+                {
+                    raw_filepath = openFileDialog.FileName;
+
+                    FileNameTextBox.Text = System.IO.Path.GetFileName(raw_filepath); // извлекаем имя файла;
+
+                    // Т.к. уже выбрали файл, то при вызове этой же функции, этот if будет пропущен
+                    SaveAP_Btn_Click(sender, e);
+                }
+
             }
+            // Обычное сохранение после просмотра информации о файле и графиков (!как было раньше!)
             else
             {
-                MessageBox.Show("Check next inputs:\nalpha-threshold\nstart-offset\nrefractory-period", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-        // сохранение в табличку 
-        private static string RunPythonScript_Save_xlxs(string pythonPath, string scriptPath, string arguments)
-        {
-            ProcessStartInfo startInfo = new ProcessStartInfo
-            {
-                FileName = pythonPath,
-                Arguments = $"\"{scriptPath}\" {arguments}", // Заключите путь к скрипту в двойные кавычки
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
+                // Тут что-то не так
+                bool ihatenigg = false;
+                OpenfileBtn.IsEnabled = ihatenigg;
+                UpdateBtn.IsEnabled = ihatenigg;
 
-            using (Process process = new Process { StartInfo = startInfo })
-            {
-                process.Start();
-                string error = process.StandardError.ReadToEnd();
-                process.WaitForExit();
+                savedFilePath = Backend.SaveFileAndGetPath(raw_filepath);
+                string ComboPath = savedFilePath + "\n" + raw_filepath;
 
-                if (!string.IsNullOrEmpty(error))
+                // Работу с TextBox закинем в основной поток от греха подальше
+                await Application.Current.Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    throw new Exception($"Python script error: {error}");
-                }
-                string output = process.StandardOutput.ReadToEnd();
+                    // Проверим, не сломал ли пользователь параметры
+                    Params = double.TryParse(alpha_threshold_TextBox.Text.Trim(), out alpha_threshold) & int.TryParse(start_offset_TextBox.Text.Trim(), out start_offset) & int.TryParse(refractory_period_TextBox.Text.Trim(), out refractory_period) & double.TryParse(limit_radius_TextBox.Text.Trim(), out limit_radius);
+
+                }));
+
+                ComboPath_with_params = ComboPath + "\n" + alpha_threshold.ToString() + "\n" + start_offset.ToString() + "\n" + refractory_period.ToString() +"\n" + limit_radius.ToString();
                 
-                return output.Trim();
+                // Теперь как надо
+                ihatenigg = true;
+
+                if (Params)
+                {
+                    alpha_threshold = Math.Round(alpha_threshold, 3);
+
+                    if (!string.IsNullOrEmpty(savedFilePath))
+                    {
+                        // Лезем в питон сохранять все в табличку
+                        await RunLongSaveAsync();
+                        if (bebra == "true") { MessageBox.Show($"File saved successfully to\r\n{savedFilePath}"); }
+                        else if (bebra == "false") { MessageBox.Show($"An error occurred while saving. Maybe you have a *.xlsx table open that you are trying to overwrite.\r\n{save_error}", "Error", MessageBoxButton.OK, MessageBoxImage.Error); }
+                    }
+                    else
+                    {
+                        MessageBox.Show("The save operation was canceled.");
+                    }
+                }
+                else
+                {
+                    MessageBox.Show("Check next inputs:\nalpha-threshold\nstart-offset\nrefractory-period", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+                OpenfileBtn.IsEnabled = ihatenigg;
+                UpdateBtn.IsEnabled = ihatenigg;
             }
         }
+        
 
         // Будем распараллеливать сохранение данных большого файла
         private async Task RunLongSaveAsync()
@@ -1105,77 +910,127 @@ namespace Potentials
             {
                 // Здесь выполняется сохранение в табличку
                 string scriptPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PythonScripts", "Table_to_C#.py");
-                bebra = RunPythonScript_Save_xlxs(pythonExePath, scriptPath, ComboPath_with_params);
+                bebra = Backend.RunPythonScript_Save_xlxs(pythonExePath, scriptPath, ComboPath_with_params);
+
+                string[] lines = bebra.Split('\n');
+                bebra = lines[0].TrimEnd('\r');
+                save_error = lines[1].TrimEnd('\r');
             });
         }
 
-        // получить путь
-        private string SaveFileAndGetPath()
-        {
-            SaveFileDialog saveFileDialog = new SaveFileDialog();
-            saveFileDialog.Filter = "Excel Files (*.xlsx)|*.xlsx";
-            saveFileDialog.FileName = "NewExcelFile";
-            saveFileDialog.DefaultExt = ".xlsx";
-
-            bool? result = saveFileDialog.ShowDialog();
-
-            if (result == true)
-            {
-                return saveFileDialog.FileName;
-            }
-
-            return null;
-        }
+        
         // Блокировка всех кнопок по умолчанию
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
             User_mode_bnt.IsChecked = true;
-            foreach (var button in FindVisualChildren<Button>(this))
+            foreach (var button in Backend.FindVisualChildren<Button>(this))
             {
-                if (button.Name != "OpenfileBtn")
-                {
-                    button.IsEnabled = false;
-                }
+                button.IsEnabled = false;
             }
-        }
-
-        // Вспомогательный метод для поиска дочерних элементов типа T
-        private IEnumerable<T> FindVisualChildren<T>(DependencyObject dependencyObject) where T : DependencyObject
-        {
-            if (dependencyObject != null)
+            foreach (var textbox in Backend.FindVisualChildren<TextBox>(this))
             {
-                for (int i = 0; i < VisualTreeHelper.GetChildrenCount(dependencyObject); i++)
+                textbox.IsEnabled = false;
+            }
+            foreach (var radiobtn in Backend.FindVisualChildren<RadioButton>(this))
+            {
+                radiobtn.IsEnabled = false;
+            }
+
+            SaveAP_Btn.IsEnabled = true;
+            Experiment_duration_label.IsEnabled = true;
+            SingleFileBtn.IsEnabled = true;
+
+            if (File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, txtFilePath)))
+            {
+                pythonExePath = File.ReadAllText(txtFilePath);
+                if (File.Exists(pythonExePath) && Path.GetFileName(pythonExePath) == "python.exe")
                 {
-                    DependencyObject child = VisualTreeHelper.GetChild(dependencyObject, i);
-                    if (child != null && child is T childType)
+                    // Если все ок, то можем продолжить работу, иначе пользователь не имеет доступа к программе
+                    OpenfileBtn.IsEnabled = true;
+                    window_size_TextBox.IsEnabled = true;
+                    TimeTextBox.IsEnabled = true;
+                    NumberAP_TextBox.IsEnabled = true;
+                    
+                    // В новой версии без Banana mode нельзя поменять выставленный вначале питон.ехе
+                    //Python_file_by_hand_btn.IsEnabled = true;
+                    foreach (var radiobtn in Backend.FindVisualChildren<RadioButton>(this))
                     {
-                        yield return childType;
-                    }
-
-                    foreach (T childOfChild in FindVisualChildren<T>(child))
-                    {
-                        yield return childOfChild;
+                        radiobtn.IsEnabled = true;
                     }
                 }
-            }
-        }
-
-        private void Window_Block_All()
-        {
-            foreach (var button in FindVisualChildren<Button>(this))
-            {
-                if (button.Name != "OpenfileBtn")
+                else
                 {
-                    button.IsEnabled = false;
+                    // Удалим файл, если он битый
+                    File.Delete(txtFilePath);
+
+                    string prompt = "С файлом python.exe что-то не так. Хотите указать корректный файл вручную?";
+
+                    Tuple<bool, string> python_file_data = Backend.PromptForPythonExe(prompt, txtFilePath, pythonExePath);
+                    bool bool_python_file = python_file_data.Item1;
+                    pythonExePath = python_file_data.Item2;
+
+                    if (bool_python_file)
+                    {
+                        // Если все ок, то можем продолжить работу, иначе пользователь не имеет доступа к программе
+                        OpenfileBtn.IsEnabled = true;
+                        window_size_TextBox.IsEnabled = true;
+                        TimeTextBox.IsEnabled = true;
+                        NumberAP_TextBox.IsEnabled = true;
+                        Python_file_by_hand_btn.IsEnabled = true;
+                        foreach (var radiobtn in Backend.FindVisualChildren<RadioButton>(this))
+                        {
+                            radiobtn.IsEnabled = true;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                string prompt = "Файл python.exe не найден. Хотите указать его вручную?";
+
+                Tuple<bool, string> python_file_data = Backend.PromptForPythonExe(prompt, txtFilePath, pythonExePath);
+                bool bool_python_file = python_file_data.Item1;
+                pythonExePath = python_file_data.Item2;
+
+                if (bool_python_file)
+                {
+                    // Если все ок, то можем продолжить работу, иначе пользователь не имеет доступа к программе
+                    OpenfileBtn.IsEnabled = true;
+                    window_size_TextBox.IsEnabled = true;
+                    foreach (var radiobtn in Backend.FindVisualChildren<RadioButton>(this))
+                    {
+                        radiobtn.IsEnabled = true;
+                    }
                 }
             }
         }
+        
 
+        private void Window_Block_All_Btns()
+        {
+            foreach (var button in Backend.FindVisualChildren<Button>(this))
+            {
+                button.IsEnabled = false;
+            }
+        }
+        private void Window_UnBlock_All_Btns()
+        {
+            foreach (var button in Backend.FindVisualChildren<Button>(this))
+            {
+                button.IsEnabled = true;
+            }
+        }
+
+        // Логика для Radio кнопочек
         private void Banana_mode_bnt_Checked(object sender, RoutedEventArgs e)
         {
             alpha_threshold_TextBox.IsEnabled = true;
             start_offset_TextBox.IsEnabled = true;
             refractory_period_TextBox.IsEnabled = true;
+            limit_radius_TextBox.IsEnabled = true;
+            UpdateBtn.IsEnabled = true;
+
+            user_or_banana = true;
         }
 
         private void User_mode_bnt_Checked(object sender, RoutedEventArgs e)
@@ -1183,11 +1038,207 @@ namespace Potentials
             alpha_threshold_TextBox.IsEnabled = false;
             start_offset_TextBox.IsEnabled = false;
             refractory_period_TextBox.IsEnabled = false;
+            limit_radius_TextBox.IsEnabled = false;
+            UpdateBtn.IsEnabled = false;
+            Python_file_by_hand_btn.IsEnabled = false;
 
-            alpha_threshold_TextBox.Text = "2.5";
-            start_offset_TextBox.Text = "25";
-            refractory_period_TextBox.Text = "10";
-            window_size_TextBox.Text = "3";
+            user_or_banana = false;
+
+            alpha_threshold_TextBox.Text = alpha_threshold.ToString();
+            start_offset_TextBox.Text = start_offset.ToString();
+            refractory_period_TextBox.Text = refractory_period.ToString();
+            limit_radius_TextBox.Text = limit_radius.ToString();
+            window_size_TextBox.Text = window_size.ToString();
+        }
+
+        // Если пользователь изменил параметры и не хочет заново выбирать файл
+        private async void UpdateBtn_Click(object sender, RoutedEventArgs e)
+        {
+            // Блокируем все от шаловливых ручек пользователя
+            Window_Block_All_Btns();
+
+            // Добро пожаловать в питон
+            await RunLongOperationAsync();
+
+            // сохранение пути к выбранному файлу в переменной raw_filepath и "/" заменяем "\" на "/"
+            FileNameTextBox.Text = System.IO.Path.GetFileName(raw_filepath); // извлекаем имя файла;
+
+            // Разблокируем кнопочки
+            Window_UnBlock_All_Btns();
+            Python_file_by_hand_btn.IsEnabled=false;
+            
+
+            // Кнопка устарела
+            //PlotAllBtn.IsEnabled = true;
+
+            // Строим все графики, кроме одиночного ПД
+            await PlotAllAsync();
+        }
+
+
+        private void ChangeAP_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (Keyboard.FocusedElement is WpfPlot) // или любой другой элемент, который вы хотите исключить
+            {
+                e.Handled = true; // поглощает событие
+                return;
+            }
+            if (e.Key == Key.Right)
+            {
+                // Обработка нажатия стрелки вправо
+                Next_AP_Btn_Click(sender, e);
+            }
+            if (e.Key == Key.Left)
+            {
+                Previos_AP_Btn_Click(sender, e);
+            }
+        }
+
+        // Если пользователь ебобо и решил полезь сам менять питон по ходу работы
+        private void Python_file_by_hand_btn_Click(object sender, RoutedEventArgs e)
+        {
+            bool local_check = false;
+
+            OpenFileDialog openFileDialog = new OpenFileDialog();
+            openFileDialog.Filter = "Executable files (*.exe)|*.exe";
+
+            if (openFileDialog.ShowDialog() == true)
+            {
+                if (Path.GetFileName(openFileDialog.FileName) != "python.exe")
+                {
+                    MessageBoxResult anotherResult = MessageBox.Show("Вы уверены, что хотите выбрать этот файл?", "Предупреждение", MessageBoxButton.YesNo);
+                    if (anotherResult != MessageBoxResult.Yes)
+                    {
+                        local_check = true;
+                    }
+                }
+                if (!local_check)
+                {
+                    pythonExePath = openFileDialog.FileName;
+                    File.WriteAllText(txtFilePath, pythonExePath);
+                }
+            }
+        }
+
+        // Методы для запрета изменения размера окна
+        private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (this.WindowState != WindowState.Maximized)
+            {
+                this.Height = _initialHeight;
+                this.Width = _initialWidth;
+            }
+        }
+
+        private void MainWindow_StateChanged(object sender, EventArgs e)
+        {
+            if (this.WindowState == WindowState.Maximized)
+            {
+                // Позволяем изменить размер окна
+            }
+            else
+            {
+                this.Height = _initialHeight;
+                this.Width = _initialWidth;
+            }
+        }
+
+        private void ClearAllBtn_Click(object sender, RoutedEventArgs e)
+        {
+            One_AP_Plot.Plot.Clear();
+            All_AP_Plot.Plot.Clear();
+            RdV0_Plot.Plot.Clear();
+            RdV4_Plot.Plot.Clear();
+            dR_Plot.Plot.Clear();
+
+            One_AP_Plot.Refresh();
+            All_AP_Plot.Refresh(); ;
+            RdV0_Plot.Refresh();
+            RdV4_Plot.Refresh();
+            dR_Plot.Refresh();
+
+            raw_filepath = "c:\\";
+            separating_path = "";
+            ComboPath_with_params = "";
+            savedFilePath = "";
+            bebra = "";
+            save_error = "";
+            raw_time = "";
+
+            time_ms = 0;
+            window_size = 3;
+            targetFile = "";
+            start_time = 0;
+            end_time = 0;
+
+            current_radius = 0;
+            phase_0_speed = 0;
+            phase_4_speed = 0;
+
+            FileNameTextBox.Text = "Here will be name of opened file";
+            TimeTextBox.Text = "00:00:00";
+            NumberAP_TextBox.Text = "1";
+
+            Window_Loaded(sender, e);
+        }
+
+        // Для открытия порезанного файла
+        private async void SingleFileBtn_Click(object sender, RoutedEventArgs e)
+        {
+            // создание диалогового окна выбора файла
+            OpenFileDialog openFileDialog = new OpenFileDialog();
+
+            // настройка параметров диалогового окна
+            openFileDialog.Filter = "Text files (*.txt)|*.txt|All files (*.*)|*.*";
+
+            if (!check_ForFirstOpen)
+            {
+                openFileDialog.InitialDirectory = raw_filepath;
+            }
+            else
+            {
+                try
+                {
+                    openFileDialog.InitialDirectory = System.IO.Path.GetDirectoryName(raw_filepath);
+                }
+                catch (Exception)
+                {
+                    openFileDialog.InitialDirectory = "c:\\";
+                }
+            }
+
+
+            //openFileDialog.InitialDirectory = "c:\\";
+            //openFileDialog.InitialDirectory = "D:\\programming\\projects\\py\\potentials\\";
+
+            // Проверим, не сломал ли пользователь параметры
+            bool Params = double.TryParse(alpha_threshold_TextBox.Text.Trim().Replace('.', ','), out alpha_threshold) & int.TryParse(start_offset_TextBox.Text.Trim(), out start_offset) & int.TryParse(refractory_period_TextBox.Text.Trim(), out refractory_period) & double.TryParse(limit_radius_TextBox.Text.Trim().Replace('.', ','), out limit_radius);
+
+            if (Params)
+            {
+                alpha_threshold = Math.Round(alpha_threshold, 3);
+                limit_radius = Math.Round(limit_radius, 3);
+
+                // отображение диалогового окна
+                if (openFileDialog.ShowDialog() == true)
+                {
+                    raw_filepath = openFileDialog.FileName;
+                    //raw_filepath = RenameRussianToLatin(raw_filepath);
+
+                    // Добро пожаловать в питон
+                    await RunLongOperationAsync_ForSeparated_File();
+
+                    // сохранение пути к выбранному файлу в переменной raw_filepath и "/" заменяем "\" на "/"
+                    FileNameTextBox.Text = System.IO.Path.GetFileName(raw_filepath) + " IS SEPARATED FILE"; // извлекаем имя файла;
+
+                    // Строим все графики, кроме одиночного ПД
+                    Plot_OneAP();
+                }
+            }
+            else
+            {
+                MessageBox.Show("Check next inputs:\nalpha-threshold\nstart-offset\nrefractory-period", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
     }
 }
