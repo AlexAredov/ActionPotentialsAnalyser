@@ -10,27 +10,19 @@ import dask.dataframe as dd
 
 # ----------------------------------------------------------------------------------------------
 
+
 if __name__ == "__main__":
     C_sharp_data = sys.argv[1]
-    # C_sharp_data = "D:/programming/projects/py/source/long_sample_data2019.txt"
+    warnings.filterwarnings("ignore")
 
     lines = C_sharp_data.split('\n')
+    
     destination = lines[0]
     file_path = lines[1]
-
     inp_alpha_threshold = float(lines[2].replace(',', '.'))
     inp_start_offset = int(lines[3])
     inp_refractory_period = int(lines[4])
     limit_rad = float(lines[5].replace(',', '.'))
-    """
-    file_path = C_sharp_data
-    inp_alpha_threshold = 0.9
-    inp_start_offset = 0
-    inp_refractory_period = 280
-    limit_rad = 250
-    destination = "D:/programming/projects/2019longfff.xlsx"
-    """
-    warnings.filterwarnings("ignore")
 
     phase_4_speed_list = []
     phase_0_speed_list = []

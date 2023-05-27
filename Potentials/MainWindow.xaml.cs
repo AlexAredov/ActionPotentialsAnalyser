@@ -47,7 +47,7 @@ namespace Potentials
             this.SizeChanged += MainWindow_SizeChanged;
             this.StateChanged += MainWindow_StateChanged;
 
-            this.WindowState = WindowState.Maximized;
+            // this.WindowState = WindowState.Maximized;
 
             // добавление легенды на графики
             One_AP_Plot.Plot.Legend();
@@ -140,9 +140,9 @@ namespace Potentials
         double x_offset = 0;
         double y_offset = 0;
 
-        double alpha_threshold = 0.9;
-        int start_offset = 0;
-        int refractory_period = 280;
+        double alpha_threshold = 1.3;
+        int start_offset = 5;
+        int refractory_period = 28;
         double limit_radius = 250;
 
         bool check_ForFirstOpen = false;
