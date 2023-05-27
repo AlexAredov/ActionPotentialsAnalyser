@@ -33,7 +33,7 @@ namespace Potentials
 {
     internal class Backend
     {
-        public static Tuple<string, double[][], double[], double[], double[], double[], double[][]> RunPythonScript_AllPD(string pythonPath, string scriptPath, string arguments)
+        public static (string SeparatingPath, double[][] Numbers, double[] Phase0SpeedList, double[] Phase4SpeedList, double[] NumOfAPs, double[] RadiusList, double[][] XyList, double[][] Xy_offset) RunPythonScript_AllPD(string pythonPath, string scriptPath, string arguments)
         {
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
@@ -86,9 +86,14 @@ namespace Potentials
                 string input_x_y_list = lines[6];
                 double[][] x_y_list = JsonConvert.DeserializeObject<double[][]>(input_x_y_list);
 
-                return Tuple.Create(separating_path, numbers, phase_0_speed_list, phase_4_speed_list, num_of_APs, radius_list, x_y_list);
+                string input_x_y_for_offset_list = lines[7];
+                double[][] x_y_for_offset_list = JsonConvert.DeserializeObject<double[][]>(input_x_y_for_offset_list);
+
+
+                return (separating_path, numbers, phase_0_speed_list, phase_4_speed_list, num_of_APs, radius_list, x_y_list, x_y_for_offset_list);
             }
         }
+
 
         public static (List<double> Times, List<double> Potentials) ReadFileData_ForAllPlot(string filePath)
         {
@@ -335,7 +340,7 @@ namespace Potentials
         }
 
         // достать данные для круга
-        public static Tuple<double, double, double, double, double> RunPythonScriptCircle(string pythonPath, string scriptPath, string arguments)
+        public static Tuple<double, double, double, double, double, double, double> RunPythonScriptCircle(string pythonPath, string scriptPath, string arguments)
         {
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
@@ -398,7 +403,20 @@ namespace Potentials
                     dv4 = 0;
                 }
 
-                return Tuple.Create(radius, x, y, dV0, dv4);
+                double x_offset;
+                if (!double.TryParse(lines[5], NumberStyles.Any, CultureInfo.InvariantCulture, out x_offset))
+                {
+                    x_offset = 0;
+                }
+
+                double y_offset;
+                if (!double.TryParse(lines[6], NumberStyles.Any, CultureInfo.InvariantCulture, out y_offset))
+                {
+                    y_offset = 0;
+                }
+
+
+                return Tuple.Create(radius, x, y, dV0, dv4, x_offset, y_offset);
             }
         }
 

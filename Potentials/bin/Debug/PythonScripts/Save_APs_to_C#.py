@@ -20,7 +20,6 @@ if __name__ == "__main__":
     lines = C_sharp_data.split('\n')
     warnings.filterwarnings("ignore")
 
-
     file = lines[0]
     inp_alpha_threshold = float(lines[1].replace(',', '.'))
     inp_start_offset = int(lines[2])
@@ -51,10 +50,14 @@ if __name__ == "__main__":
     phase_0_speed_list = []
     num_of_APs = []
     radius_list = []
-    x_y_list = []
 
+    x_y_list = []
     x_list = []
     y_list = []
+
+    x_y_offset_list = []
+    x_offset_list = []
+    y_offset_list = []
 
     for number, ap in enumerate(action_potentials):
         # <
@@ -78,7 +81,7 @@ if __name__ == "__main__":
         current_ap_time = time[ap['pre_start']:ap['end']]
         current_ap_voltage = voltage[ap['pre_start']:ap['end']]
 
-        radius, x, y = can.circle(current_ap_time, current_ap_voltage, limit_rad)
+        radius, x, y = can.circle(current_ap_time, current_ap_voltage, avr_rad=limit_rad)
         if math.isnan(radius):
             radius = can.replace_nan_with_nearest(radius_list, number)
 
@@ -93,6 +96,19 @@ if __name__ == "__main__":
 
         radius_list.append(round(radius, 3))
         x_y_list.append([round(x, 3), round(y, 3)])
+
+        x_offset = time[ap['start']]
+        y_offset = voltage[ap['start']]
+
+        if math.isnan(x_offset):
+            x_offset = can.replace_nan_with_nearest(x_y_offset_list, number)
+
+        if math.isnan(y_offset):
+            y_offset = can.replace_nan_with_nearest(x_y_offset_list, number)
+
+        x_offset_list.append(x_offset)
+        y_offset_list.append(y_offset)
+        x_y_offset_list.append([round(x_offset, 3), round(y_offset, 3)])
         # >
 
     print(intervals)
@@ -102,3 +118,4 @@ if __name__ == "__main__":
     print(num_of_APs)
     print(radius_list)
     print(x_y_list)
+    print(x_y_offset_list)

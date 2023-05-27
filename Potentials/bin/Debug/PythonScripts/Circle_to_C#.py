@@ -11,7 +11,7 @@ import dask.dataframe as dd
 # ----------------------------------------------------------------------------------------------
 if __name__ == "__main__":
     C_sharp_data = sys.argv[1]
-    # C_sharp_data = "D:/programming/projects/py/potentials/source/separated_APs/1.txt"
+    # C_sharp_data = "D:/programming/projects/py/source/separated_APs/12039.txt"
     warnings.filterwarnings("ignore")
 
     lines = C_sharp_data.split('\n')
@@ -33,7 +33,7 @@ if __name__ == "__main__":
     time, voltage = can.open_txt(file_path)
     # time, voltage = preprocess(file_path)
 
-    radius, x, y = can.circle(time, voltage, limit_rad)
+    radius, x, y = can.circle(time, voltage, avr_rad=limit_rad)
 
     # добавим скорости в 0 и в 4 фазу
     # phase_4_speed, phase_0_speed = 999, 999
@@ -49,11 +49,16 @@ if __name__ == "__main__":
         phase_4_speed = round(phase_4_speed, 3)
         phase_0_speed = round(phase_0_speed, 3)
 
+    x_offset = time[ap['start']]
+    y_offset = voltage[ap['start']]
+
     print(round(radius, 3))
     print(round(x, 3))
     print(round(y, 3))
     print(phase_0_speed)
     print(phase_4_speed)
+    print(x_offset)
+    print(y_offset)
 
 # ----------------------------------------------------------------------------------------------
 

@@ -122,6 +122,7 @@ namespace Potentials
         double[] num_of_APs;
         double[] radius_array;
         double[][] x_y_array;
+        double[][] x_y_for_offset_array;
 
         int time_ms = 0;
         int window_size = 3;
@@ -135,6 +136,9 @@ namespace Potentials
         double phase_4_speed = 0;
         double x_local = 0;
         double y_local = 0;
+
+        double x_offset = 0;
+        double y_offset = 0;
 
         double alpha_threshold = 0.9;
         int start_offset = 0;
@@ -284,7 +288,8 @@ namespace Potentials
                 // Здесь выполняется самая длительная операция
                 string raw_filepath_with_params = raw_filepath + "\n" + alpha_threshold.ToString() + "\n" + start_offset.ToString() + "\n" + refractory_period.ToString() + "\n" + limit_radius.ToString();
                 string scriptPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PythonScripts", "Save_APs_to_C#.py");
-                Tuple<string, double[][], double[], double[], double[], double[], double[][]> pythonData = Backend.RunPythonScript_AllPD(pythonExePath, scriptPath, raw_filepath_with_params);
+                var pythonData = Backend.RunPythonScript_AllPD(pythonExePath, scriptPath, raw_filepath_with_params); 
+                
                 separating_path = pythonData.Item1;
                 intervals = pythonData.Item2;
                 phase_0_speed_array = pythonData.Item3;
@@ -292,6 +297,7 @@ namespace Potentials
                 num_of_APs = pythonData.Item5;
                 radius_array = pythonData.Item6;
                 x_y_array = pythonData.Item7;
+                x_y_for_offset_array = pythonData.Item8;
 
                 check_ForFirstOpen = true;
             });
@@ -305,12 +311,14 @@ namespace Potentials
                 string raw_filepath_with_params = raw_filepath + "\n" + alpha_threshold.ToString() + "\n" + start_offset.ToString() + "\n" + refractory_period.ToString() + "\n" + limit_radius.ToString();
                 string scriptPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PythonScripts", "Circle_to_C#.py");
                 // Достаем данные для круга и скоростей
-                Tuple<double, double, double, double, double> CircleData = Backend.RunPythonScriptCircle(pythonExePath, scriptPath, raw_filepath_with_params);
+                Tuple<double, double, double, double, double, double, double> CircleData = Backend.RunPythonScriptCircle(pythonExePath, scriptPath, raw_filepath_with_params);
                 current_radius = CircleData.Item1;
                 x_local = CircleData.Item2;
                 y_local = CircleData.Item3;
                 phase_0_speed = CircleData.Item4;
                 phase_4_speed = CircleData.Item5;
+                x_offset = CircleData.Item6;
+                y_offset = CircleData.Item7;
             });
         }
 
@@ -651,6 +659,8 @@ namespace Potentials
                     // Строим заготовку
                     One_AP_Plot.Plot.AddScatterLines(time, voltage, lineWidth: 5, label: $"R = {radius_array[currentFileNum-1]}\r\nN = {currentFileNum}");
 
+                    One_AP_Plot.Plot.AddMarker(x_y_for_offset_array[currentFileNum - 1][0], x_y_for_offset_array[currentFileNum - 1][1], MarkerShape.filledCircle, 15, System.Drawing.Color.GreenYellow);
+
                     // calculate the first derivative
                     double[] deriv = new double[voltage.Length];
                     deriv = Backend.CalculateDerivative(voltage, time);
@@ -711,6 +721,8 @@ namespace Potentials
             {
                 // Строим заготовку
                 One_AP_Plot.Plot.AddScatterLines(time, voltage, lineWidth: 5, label: $"R = {current_radius}");
+
+                One_AP_Plot.Plot.AddMarker(x_offset, y_offset, MarkerShape.filledCircle, 15, System.Drawing.Color.GreenYellow);
 
                 // calculate the first derivative
                 double[] deriv = new double[voltage.Length];
