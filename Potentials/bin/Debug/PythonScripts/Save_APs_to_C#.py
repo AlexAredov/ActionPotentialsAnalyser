@@ -16,7 +16,7 @@ import dask.dataframe as dd
 
 if __name__ == "__main__":
     C_sharp_data = sys.argv[1]
-    # C_sharp_data = "D:/programming/projects/py/potentials/source/ten.txt"
+    # C_sharp_data = "D:/programming/projects/py/source/long_sample_data2019.txt"
     lines = C_sharp_data.split('\n')
     warnings.filterwarnings("ignore")
 
@@ -30,7 +30,7 @@ if __name__ == "__main__":
     inp_alpha_threshold = 2.5
     inp_start_offset = 25
     inp_refractory_period = 10
-    limit_rad = 350
+    limit_rad = 250
     """
     separating_folder = "separated_APs"
 
@@ -40,7 +40,7 @@ if __name__ == "__main__":
 
     time, voltage = can.preprocess(file, step=4)
     action_potentials = can.find_action_potentials(time, voltage, alpha=inp_alpha_threshold,
-                                               offset=inp_start_offset, refractory_period=inp_refractory_period)
+                                                   offset=inp_start_offset, refractory_period=inp_refractory_period)
 
     # <
     # Сохраняем каждые ПД в папку и получаем временные интервалы
@@ -81,7 +81,11 @@ if __name__ == "__main__":
         current_ap_time = time[ap['pre_start']:ap['end']]
         current_ap_voltage = voltage[ap['pre_start']:ap['end']]
 
-        radius, x, y = can.circle(current_ap_time, current_ap_voltage, avr_rad=limit_rad)
+        try:
+            radius, x, y = can.circle(current_ap_time, current_ap_voltage, avr_rad=limit_rad)
+        except:
+            radius, x, y = math.nan, math.nan, math.nan
+
         if math.isnan(radius):
             radius = can.replace_nan_with_nearest(radius_list, number)
 
@@ -111,6 +115,9 @@ if __name__ == "__main__":
         x_y_offset_list.append([round(x_offset, 3), round(y_offset, 3)])
         # >
 
+    sys.stdout.write("\n".join(map(str, [intervals, separating_path, phase_0_speed_list, phase_4_speed_list, num_of_APs,
+                                         radius_list, x_y_list, x_y_offset_list])) + '\n')
+    """
     print(intervals)
     print(separating_path)
     print(phase_0_speed_list)
@@ -119,3 +126,4 @@ if __name__ == "__main__":
     print(radius_list)
     print(x_y_list)
     print(x_y_offset_list)
+"""

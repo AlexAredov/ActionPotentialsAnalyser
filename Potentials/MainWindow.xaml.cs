@@ -1054,25 +1054,36 @@ namespace Potentials
         // Если пользователь изменил параметры и не хочет заново выбирать файл
         private async void UpdateBtn_Click(object sender, RoutedEventArgs e)
         {
-            // Блокируем все от шаловливых ручек пользователя
-            Window_Block_All_Btns();
+            // Проверим, не сломал ли пользователь параметры
+            bool Params = double.TryParse(alpha_threshold_TextBox.Text.Trim().Replace('.', ','), out alpha_threshold) & int.TryParse(start_offset_TextBox.Text.Trim(), out start_offset) & int.TryParse(refractory_period_TextBox.Text.Trim(), out refractory_period) & double.TryParse(limit_radius_TextBox.Text.Trim().Replace('.', ','), out limit_radius);
 
-            // Добро пожаловать в питон
-            await RunLongOperationAsync();
+            if (Params)
+            {
+                alpha_threshold = Math.Round(alpha_threshold, 3);
+                limit_radius = Math.Round(limit_radius, 3);
 
-            // сохранение пути к выбранному файлу в переменной raw_filepath и "/" заменяем "\" на "/"
-            FileNameTextBox.Text = System.IO.Path.GetFileName(raw_filepath); // извлекаем имя файла;
 
-            // Разблокируем кнопочки
-            Window_UnBlock_All_Btns();
-            Python_file_by_hand_btn.IsEnabled=false;
-            
 
-            // Кнопка устарела
-            //PlotAllBtn.IsEnabled = true;
+                // Блокируем все от шаловливых ручек пользователя
+                Window_Block_All_Btns();
 
-            // Строим все графики, кроме одиночного ПД
-            await PlotAllAsync();
+                // Добро пожаловать в питон
+                await RunLongOperationAsync();
+
+                // сохранение пути к выбранному файлу в переменной raw_filepath и "/" заменяем "\" на "/"
+                FileNameTextBox.Text = System.IO.Path.GetFileName(raw_filepath); // извлекаем имя файла;
+
+                // Разблокируем кнопочки
+                Window_UnBlock_All_Btns();
+                Python_file_by_hand_btn.IsEnabled = false;
+
+
+                // Кнопка устарела
+                //PlotAllBtn.IsEnabled = true;
+
+                // Строим все графики, кроме одиночного ПД
+                await PlotAllAsync();
+            }
         }
 
 
