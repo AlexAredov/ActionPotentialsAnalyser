@@ -717,7 +717,7 @@ namespace Potentials
                 deriv = Backend.CalculateDerivative(voltage, time);
 
                 // plot the first derivative in red on the secondary Y axis
-                var dVdt = One_AP_Plot.Plot.AddScatterLines(time, deriv, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red), label: $"(dV/dt)0 =  {phase_0_speed} V/s\r\n(dV/dt)4 = {phase_0_speed} mV/s");
+                var dVdt = One_AP_Plot.Plot.AddScatterLines(time, deriv, color: System.Drawing.Color.FromArgb(120, System.Drawing.Color.Red), label: $"(dV/dt)0 =  {phase_0_speed} V/s\r\n(dV/dt)4 = {phase_4_speed} mV/s");
                 dVdt.YAxisIndex = 1;
                 dVdt.LineWidth = 3;
                 var legend = One_AP_Plot.Plot.Legend(enable: true);
