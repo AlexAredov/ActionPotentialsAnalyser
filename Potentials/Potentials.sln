@@ -1,9 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.5.33627.172
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.31702.278
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Potentials", "Potentials.csproj", "{1996F4CD-BE23-4F06-8931-86797D757CE4}"
+EndProject
+Project("{54435603-DBB4-11D2-8724-00A0C9A8B90C}") = "Action Potentials Analyzer Installer", "..\Action Potentials Analyzer Installer\Action Potentials Analyzer Installer.vdproj", "{9155DF9A-40E7-48AF-A6B5-D210880BD9BD}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,6 +17,8 @@ Global
 		{1996F4CD-BE23-4F06-8931-86797D757CE4}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1996F4CD-BE23-4F06-8931-86797D757CE4}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1996F4CD-BE23-4F06-8931-86797D757CE4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9155DF9A-40E7-48AF-A6B5-D210880BD9BD}.Debug|Any CPU.ActiveCfg = Debug
+		{9155DF9A-40E7-48AF-A6B5-D210880BD9BD}.Release|Any CPU.ActiveCfg = Release
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
